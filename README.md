@@ -1,8 +1,8 @@
-# `@ynk/capture` — capture SDK skeleton
+# `@suraya/capture` — capture SDK skeleton
 
 **Status:** v0.1 skeleton. Types, hook signatures, transport stubs. Not yet a published npm package — that's deferred to substrate-go-live.
 
-The Track A (automatic) half of the capture pipeline for the [setsail brain](../../docs/brain/SPEC.md). Wires into the [Claude Code Agent SDK](https://docs.claude.com/en/docs/agents-and-tools/agent-sdk) as `PostToolUse` / `UserPromptSubmit` / `Stop` hooks; emits typed observations to a local `.observations.jsonl` and async-POSTs them to the brain substrate's webhook endpoint.
+The Track A (automatic) half of the capture pipeline for the [suraya brain](../../docs/brain/SPEC.md). Wires into the [Claude Code Agent SDK](https://docs.claude.com/en/docs/agents-and-tools/agent-sdk) as `PostToolUse` / `UserPromptSubmit` / `Stop` hooks; emits typed observations to a local `.observations.jsonl` and async-POSTs them to the brain substrate's webhook endpoint.
 
 For Track B (operator-invoked `/capture` skill), see [`SKILL.md`](./SKILL.md) — that file is drop-in to any project's `.claude/skills/capture/SKILL.md`.
 
@@ -25,7 +25,7 @@ tools/capture-sdk/
 ## Public API (intended)
 
 ```typescript
-import { captureHooks } from "@ynk/capture";
+import { captureHooks } from "@suraya/capture";
 import { ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
 
 const options: ClaudeAgentOptions = {
@@ -33,8 +33,8 @@ const options: ClaudeAgentOptions = {
   hooks: {
     ...captureHooks({
       projectSlug: "portalynkanalytics1",
-      webhookUrl: process.env.SETSAIL_BRAIN_WEBHOOK_URL,
-      webhookSecret: process.env.SETSAIL_BRAIN_WEBHOOK_SECRET,
+      webhookUrl: process.env.SURAYA_BRAIN_WEBHOOK_URL,
+      webhookSecret: process.env.SURAYA_BRAIN_WEBHOOK_SECRET,
       observationsPath: ".observations.jsonl",
       privacy: "org-wide", // default for this session; operator can override per-event
     }),
@@ -58,15 +58,15 @@ Auto-classification is rule-based (cheap, predictable). The substrate's clusteri
 
 Track A ships through two equivalent channels. Both wire the same hooks and emit the same `ObservationWire` JSON.
 
-**`@ynk/capture` npm package** — for any Agent SDK or Node consumer that wants to wire the hooks directly:
+**`@suraya/capture` npm package** — for any Agent SDK or Node consumer that wants to wire the hooks directly:
 
 ```bash
-npm install @ynk/capture
+npm install @suraya/capture
 ```
 
 ```ts
 // in your project's Agent SDK config
-import { captureHooks } from "@ynk/capture";
+import { captureHooks } from "@suraya/capture";
 // ...see "Public API" above
 ```
 
@@ -74,7 +74,7 @@ import { captureHooks } from "@ynk/capture";
 
 ```json
 {
-  "plugins": ["@ynk/capture/claude-code-plugin"]
+  "plugins": ["@suraya/capture/claude-code-plugin"]
 }
 ```
 
@@ -88,10 +88,10 @@ For filled examples of what the captured observations look like, see [`docs/brai
 
 ## Deferred (needs Kareem's involvement)
 
-- Publish to npm registry (decision: GitHub Packages vs. public npm). Today it lives in setsail/`tools/`.
+- Publish to npm registry (decision: GitHub Packages vs. public npm). Today it lives in suraya/`tools/`.
 - Provision the substrate webhook endpoint (substrate is spec-only tonight; see `docs/brain/SPEC.md`).
-- Add `SETSAIL_BRAIN_WEBHOOK_URL` and `SETSAIL_BRAIN_WEBHOOK_SECRET` to Doppler for each consuming project.
-- Inject the package + the `/capture` skill into product projects (per the overnight directive: seeds live in setsail, injection is project-by-project).
+- Add `SURAYA_BRAIN_WEBHOOK_URL` and `SURAYA_BRAIN_WEBHOOK_SECRET` to Doppler for each consuming project.
+- Inject the package + the `/capture` skill into product projects (per the overnight directive: seeds live in suraya, injection is project-by-project).
 
 ## Why a skeleton vs. a working package
 

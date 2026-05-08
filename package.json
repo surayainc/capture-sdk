@@ -1,8 +1,8 @@
 {
-  "name": "@ynk/capture",
+  "name": "@suraya/capture",
   "version": "0.1.0-skeleton",
   "private": true,
-  "description": "Track A (automatic) capture for the setsail brain. Wires into the Claude Code Agent SDK as PostToolUse / UserPromptSubmit / Stop hooks; emits typed observations to a local .observations.jsonl and POSTs them async to the brain substrate's webhook endpoint.",
+  "description": "Track A (automatic) capture for the suraya brain. Wires into the Claude Code Agent SDK as PostToolUse / UserPromptSubmit / Stop hooks; emits typed observations to a local .observations.jsonl and POSTs them async to the brain substrate's webhook endpoint.",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -21,5 +21,5 @@
     "typecheck": "tsc --noEmit"
   },
   "license": "UNLICENSED",
-  "homepage": "https://github.com/ynkincubatorhq/setsail/tree/main/tools/capture-sdk"
+  "homepage": "https://github.com/surayainc/suraya/tree/main/tools/capture-sdk"
 }

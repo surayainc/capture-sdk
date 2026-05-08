@@ -55,7 +55,7 @@ async function postToSubstrate(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Setsail-Signature": signature,
+      "X-Suraya-Signature": signature,
     },
     body,
   });

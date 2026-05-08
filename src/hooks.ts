@@ -8,7 +8,7 @@
  *
  * To wire this into a project's agent options:
  *
- *   import { captureHooks } from "@ynk/capture";
+ *   import { captureHooks } from "@suraya/capture";
  *   const options: ClaudeAgentOptions = {
  *     ...,
  *     hooks: {

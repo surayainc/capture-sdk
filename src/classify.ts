@@ -62,6 +62,6 @@ export function classifyObservation(input: ClassifyInput): ObservationType | nul
  * Tunable; substrate's clustering job is the safety net.
  */
 function isArchSignificantPath(path: string): boolean {
-  const ARCH_RE = /(prisma\/schema\.prisma|next\.config\.|tailwind\.config\.|package\.json|src\/lib\/(auth|db|crypto|sync)|\.github\/workflows\/|CODEOWNERS|CLAUDE\.md|HANDOFF\.md|setsail|patterns\/)/i;
+  const ARCH_RE = /(prisma\/schema\.prisma|next\.config\.|tailwind\.config\.|package\.json|src\/lib\/(auth|db|crypto|sync)|\.github\/workflows\/|CODEOWNERS|CLAUDE\.md|HANDOFF\.md|suraya|patterns\/)/i;
   return ARCH_RE.test(path);
 }

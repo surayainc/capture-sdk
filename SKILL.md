@@ -1,11 +1,11 @@
 ---
 name: capture
-description: Manually capture a typed observation (decision, failure, fix, style, deviation) about the current moment in the project. Appends to .observations.jsonl in the project root and POSTs to the setsail brain webhook if configured. Use this for "capture this decision" / "capture this fix" moments — anything where you (the operator) want the *why* preserved beyond what the auto-capture (Track A) hooks pick up.
+description: Manually capture a typed observation (decision, failure, fix, style, deviation) about the current moment in the project. Appends to .observations.jsonl in the project root and POSTs to the suraya brain webhook if configured. Use this for "capture this decision" / "capture this fix" moments — anything where you (the operator) want the *why* preserved beyond what the auto-capture (Track A) hooks pick up.
 ---
 
-# capture — Track B (operator-invoked) for the setsail brain
+# capture — Track B (operator-invoked) for the suraya brain
 
-You're being invoked because the operator typed `/capture <type>: <text>` (or asked you to capture a moment). Your job: write a typed observation to `.observations.jsonl` in the project root, and POST it to the brain substrate webhook if `SETSAIL_BRAIN_WEBHOOK_URL` is set in the environment.
+You're being invoked because the operator typed `/capture <type>: <text>` (or asked you to capture a moment). Your job: write a typed observation to `.observations.jsonl` in the project root, and POST it to the brain substrate webhook if `SURAYA_BRAIN_WEBHOOK_URL` is set in the environment.
 
 ## Inputs you'll receive
 
@@ -27,7 +27,7 @@ If the operator wants to mark privacy as `project-private`, they'll write `/capt
 
 1. **Read recent context.** Look at the last few user messages and your own recent tool uses. The operator's `<text>` is the *what*; your job is to fill in the *why* and the *context* using what's been said in the session. If the operator's text already includes the why, don't editorialize — preserve their voice.
 
-2. **Compose the observation object.** The wire format (matches `setsail/docs/brain/SPEC.md`):
+2. **Compose the observation object.** The wire format (matches `suraya/docs/brain/SPEC.md`):
 
    ```json
    {
@@ -56,11 +56,11 @@ If the operator wants to mark privacy as `project-private`, they'll write `/capt
 
 3. **Generate a ULID for `observation_id`.** Use a Bash one-liner like `node -e "process.stdout.write(Date.now().toString(32).padStart(10,'0').toUpperCase()+Array.from({length:16},()=>'0123456789ABCDEFGHJKMNPQRSTVWXYZ'[Math.floor(Math.random()*32)]).join(''))"`. Anything ULID-shaped works; the substrate just needs a unique time-sortable string.
 
-4. **Project slug.** Read it from the project's `CLAUDE.md` (the slug is referenced in the "Patterns adopted from setsail" or "Project info" section) or fall back to the directory name.
+4. **Project slug.** Read it from the project's `CLAUDE.md` (the slug is referenced in the "Patterns adopted from suraya" or "Project info" section) or fall back to the directory name.
 
 5. **Append to `.observations.jsonl`.** One JSON-line per observation. Create the file if it doesn't exist. Add `.observations.jsonl` to `.gitignore` if it isn't there.
 
-6. **POST to the substrate webhook (best-effort).** If `SETSAIL_BRAIN_WEBHOOK_URL` and `SETSAIL_BRAIN_WEBHOOK_SECRET` are both set in the environment, send a POST with body = the observation object, header `X-Setsail-Signature: sha256=<hex of HMAC-SHA256(body, secret)>`. If unset, skip silently — local jsonl is the fallback. If the POST fails (network error, 401, 5xx), log to stderr and continue. NEVER fail the slash command on a webhook failure.
+6. **POST to the substrate webhook (best-effort).** If `SURAYA_BRAIN_WEBHOOK_URL` and `SURAYA_BRAIN_WEBHOOK_SECRET` are both set in the environment, send a POST with body = the observation object, header `X-Suraya-Signature: sha256=<hex of HMAC-SHA256(body, secret)>`. If unset, skip silently — local jsonl is the fallback. If the POST fails (network error, 401, 5xx), log to stderr and continue. NEVER fail the slash command on a webhook failure.
 
 7. **Confirm to the operator** in one line: `Captured <type>: <summary first ~80 chars> → .observations.jsonl<. Substrate: ok|not configured|failed.>`
 

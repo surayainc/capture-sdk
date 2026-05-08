@@ -1,5 +1,5 @@
 /**
- * Wire format for the setsail brain. Mirrors `docs/brain/SPEC.md` →
+ * Wire format for the suraya brain. Mirrors `docs/brain/SPEC.md` →
  * "Capture wire format (inbound to substrate)".
  *
  * SCHEMA VERSION: bump only on incompatible change. The substrate's
