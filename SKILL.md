@@ -60,7 +60,9 @@ If the operator wants to mark privacy as `project-private`, they'll write `/capt
 
 5. **Append to `.observations.jsonl`.** One JSON-line per observation. Create the file if it doesn't exist. Add `.observations.jsonl` to `.gitignore` if it isn't there.
 
-6. **POST to the substrate webhook (best-effort).** If `SURAYA_BRAIN_WEBHOOK_URL` and `SURAYA_BRAIN_WEBHOOK_SECRET` are both set in the environment, send a POST with body = the observation object, header `X-Suraya-Signature: sha256=<hex of HMAC-SHA256(body, secret)>`. If unset, skip silently — local jsonl is the fallback. If the POST fails (network error, 401, 5xx), log to stderr and continue. NEVER fail the slash command on a webhook failure.
+6. **POST to the brain ingest endpoint (best-effort).** If `SURAYA_BRAIN_WEBHOOK_URL` and `SURAYA_BRAIN_WEBHOOK_SECRET` are both set in the environment, send a POST with body = JSON-stringified observation, `Content-Type: application/json`, and header `X-Suraya-Signature` set to the raw hex of `HMAC-SHA256(body, secret)` — no `sha256=` prefix. The canonical endpoint is `https://brain.suraya.ai/api/observations/ingest`. If env vars are unset, skip silently; local jsonl is the fallback. If the POST fails (network error, 401, 5xx), log to stderr and continue. NEVER fail the slash command on a webhook failure.
+
+   **Why no prefix:** the brain's verifySignature in `suraya-brain/src/lib/hmac.ts` constant-time-compares the raw hex. Mismatched format returns 401.
 
 7. **Confirm to the operator** in one line: `Captured <type>: <summary first ~80 chars> → .observations.jsonl<. Substrate: ok|not configured|failed.>`
 
