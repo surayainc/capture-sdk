@@ -1,12 +1,18 @@
 {
   "name": "@surayaorg/capture",
-  "version": "0.1.0-skeleton",
-  "private": true,
-  "description": "Track A (automatic) capture for the suraya brain. Wires into the Claude Code Agent SDK as PostToolUse / UserPromptSubmit / Stop hooks; emits typed observations to a local .observations.jsonl and POSTs them async to the brain substrate's webhook endpoint.",
+  "version": "0.1.0",
+  "description": "Capture SDK for the Suraya brain. Track A automatic capture via Claude Code Agent SDK hooks (PostToolUse / UserPromptSubmit / Stop) plus the shipObservation transport for direct emission. Writes typed observations to a local .observations.jsonl and POSTs them HMAC-signed to the brain substrate's webhook.",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "files": [
+    "dist/",
     "src/",
     "README.md",
     "SKILL.md"
@@ -17,9 +23,40 @@
   "peerDependencies": {
     "@anthropic-ai/claude-agent-sdk": "*"
   },
-  "scripts": {
-    "typecheck": "tsc --noEmit"
+  "peerDependenciesMeta": {
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    }
   },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.18",
+    "typescript": "^5.7.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "suraya",
+    "brain",
+    "observability",
+    "capture",
+    "claude-code",
+    "agent-sdk"
+  ],
+  "author": "Suraya (Kareem Elgendy <kareem@suraya.ai>)",
   "license": "UNLICENSED",
-  "homepage": "https://github.com/surayainc/suraya/tree/main/tools/capture-sdk"
+  "homepage": "https://github.com/surayainc/suraya/tree/main/tools/capture-sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/surayainc/suraya.git",
+    "directory": "tools/capture-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/surayainc/suraya/issues"
+  }
 }
