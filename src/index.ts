@@ -1,5 +1,5 @@
 /**
- * @suraya/capture — SDK entry point.
+ * @surayaorg/capture — SDK entry point.
  *
  * Two surfaces:
  *

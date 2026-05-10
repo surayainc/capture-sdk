@@ -1,4 +1,4 @@
-# `@suraya/capture` — capture SDK skeleton
+# `@surayaorg/capture` — capture SDK skeleton
 
 **Status:** v0.1 skeleton. Types, hook signatures, transport stubs. Not yet a published npm package — that's deferred to substrate-go-live.
 
@@ -25,7 +25,7 @@ tools/capture-sdk/
 ## Public API (intended)
 
 ```typescript
-import { captureHooks } from "@suraya/capture";
+import { captureHooks } from "@surayaorg/capture";
 import { ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
 
 const options: ClaudeAgentOptions = {
@@ -58,15 +58,15 @@ Auto-classification is rule-based (cheap, predictable). The substrate's clusteri
 
 Track A ships through two equivalent channels. Both wire the same hooks and emit the same `ObservationWire` JSON.
 
-**`@suraya/capture` npm package** — for any Agent SDK or Node consumer that wants to wire the hooks directly:
+**`@surayaorg/capture` npm package** — for any Agent SDK or Node consumer that wants to wire the hooks directly:
 
 ```bash
-npm install @suraya/capture
+npm install @surayaorg/capture
 ```
 
 ```ts
 // in your project's Agent SDK config
-import { captureHooks } from "@suraya/capture";
+import { captureHooks } from "@surayaorg/capture";
 // ...see "Public API" above
 ```
 
@@ -74,7 +74,7 @@ import { captureHooks } from "@suraya/capture";
 
 ```json
 {
-  "plugins": ["@suraya/capture/claude-code-plugin"]
+  "plugins": ["@surayaorg/capture/claude-code-plugin"]
 }
 ```
 

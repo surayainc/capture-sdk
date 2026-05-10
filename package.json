@@ -1,5 +1,5 @@
 {
-  "name": "@suraya/capture",
+  "name": "@surayaorg/capture",
   "version": "0.1.0-skeleton",
   "private": true,
   "description": "Track A (automatic) capture for the suraya brain. Wires into the Claude Code Agent SDK as PostToolUse / UserPromptSubmit / Stop hooks; emits typed observations to a local .observations.jsonl and POSTs them async to the brain substrate's webhook endpoint.",
