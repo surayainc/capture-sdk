@@ -50,7 +50,9 @@ async function postToSubstrate(
   secret: string,
 ): Promise<void> {
   const body = JSON.stringify(obs);
-  const signature = "sha256=" + createHmac("sha256", secret).update(body).digest("hex");
+  // Raw hex, no `sha256=` prefix. Matches the brain ingest endpoint's
+  // verifySignature in suraya-brain/src/lib/hmac.ts.
+  const signature = createHmac("sha256", secret).update(body).digest("hex");
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -59,9 +61,9 @@ async function postToSubstrate(
     },
     body,
   });
-  if (!res.ok && res.status !== 409) {
-    // 409 Conflict = duplicate observation_id, which is expected for
-    // retries. Anything else is a real failure.
+  if (!res.ok) {
+    // The brain returns 200 with `deduped: true` for retries; we don't
+    // need 409-style handling. Any non-2xx is a real failure.
     const text = await res.text().catch(() => "");
     throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
   }
