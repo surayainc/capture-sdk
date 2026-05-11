@@ -97,6 +97,14 @@ export interface ObservationWire {
    */
   scope_id?: string;
   /**
+   * Validity windows (Cut 5). When this observation became / stopped
+   * being true. Both omitted = "true for all time, as far as we know"
+   * (the common case). Brain retrieval can filter by ?valid_at=<T> to
+   * ask "what did we believe at time T?".
+   */
+  start_valid_at?: string;
+  end_valid_at?: string;
+  /**
    * fix_metrics build: timing + severity + cause + impact carried
    * inline when the observation came through /fix-start … /fix-end.
    * Only valid when type === "fix".
