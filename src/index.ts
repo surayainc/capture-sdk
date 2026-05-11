@@ -21,5 +21,28 @@ export type {
   Privacy,
   Source,
   CaptureOptions,
+  FixMetricsPayload,
+  FixSeverity,
+  FixRecurrenceRisk,
+  FixCauseKind,
 } from "./types.js";
 export { SCHEMA_VERSION } from "./types.js";
+
+// fix_metrics build: timer, draft-state, signal-detect.
+// The skill .mjs (/fix-start, /fix-end, /fix-abandon) composes these
+// with shipObservation() to record fix sessions with metrics.
+export { createTimer } from "./timer.js";
+export type { Timer, TimerPhase, TimerSnapshot } from "./timer.js";
+export {
+  readDraft,
+  writeDraft,
+  deleteDraft,
+  hasDraft,
+} from "./draft-state.js";
+export type { FixDraft } from "./draft-state.js";
+export {
+  detectFixSignal,
+  suggestSeverity,
+  PROMPT_THRESHOLD,
+} from "./signal-detect.js";
+export type { Signal, SignalDetection } from "./signal-detect.js";

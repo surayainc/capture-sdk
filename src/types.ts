@@ -13,9 +13,53 @@ export type ObservationType =
   | "failure"
   | "fix"
   | "style"
-  | "deviation";
+  | "deviation"
+  | "correction"
+  | "scope_state";
 
-export type Privacy = "org-wide" | "project-private" | "tier-restricted";
+export type Privacy =
+  | "org-wide"
+  | "project-private"
+  | "surayasphere"
+  | "tier-restricted";
+
+export type FixSeverity = "low" | "medium" | "high" | "critical";
+export type FixRecurrenceRisk = "low" | "medium" | "high";
+export type FixCauseKind =
+  | "missed-bug"
+  | "bad-code-gen"
+  | "miscommunication"
+  | "env-misconfig"
+  | "race-condition"
+  | "other";
+
+/**
+ * Metrics attached to a fix-type observation that came through the
+ * /fix-start … /fix-end flow. Carried on the wire payload to brain;
+ * brain inserts a fix_metrics sidecar row and computes importance.
+ *
+ * Optional on the wire — fix observations captured WITHOUT the
+ * /fix-start flow (e.g. ad-hoc `/capture fix: ...`) stay valid but
+ * carry no metrics. Only emitted when the SDK has been driven through
+ * a full fix session.
+ */
+export interface FixMetricsPayload {
+  started_at: string;
+  ended_at: string;
+  duration_machine_seconds?: number;
+  duration_human_blocking_seconds?: number;
+  duration_handoff_seconds?: number;
+  duration_human_reasonable_seconds?: number;
+  cause_continuum?: number;
+  cause_kind?: FixCauseKind;
+  cause_notes?: string;
+  severity: FixSeverity;
+  surfaces_affected?: unknown[];
+  recurrence_risk?: FixRecurrenceRisk;
+  affected_production?: boolean;
+  start_signal?: string;
+  end_signal?: string;
+}
 
 export type Source = "hook" | "skill" | "pr-merge" | "manual";
 
@@ -46,6 +90,18 @@ export interface ObservationWire {
   links: ObservationLink[];
   tags: string[];
   raw?: Record<string, unknown>;
+  /**
+   * Cut 1 scoping-maps build: which scope (UUID) this observation was
+   * captured under. Optional — observations not tied to a scope are
+   * still valid.
+   */
+  scope_id?: string;
+  /**
+   * fix_metrics build: timing + severity + cause + impact carried
+   * inline when the observation came through /fix-start … /fix-end.
+   * Only valid when type === "fix".
+   */
+  fix_metrics?: FixMetricsPayload;
 }
 
 export interface CaptureOptions {
