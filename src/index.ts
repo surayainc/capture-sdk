@@ -46,3 +46,19 @@ export {
   PROMPT_THRESHOLD,
 } from "./signal-detect.js";
 export type { Signal, SignalDetection } from "./signal-detect.js";
+
+// F6 Credential Bridge — consumer-side API. Keypair gen/load, register
+// public key with brain, fetch pending sealed credentials, decrypt
+// locally, mark claimed. Crypto: libsodium-wrappers (same as brain side).
+export {
+  generateKeypair,
+  loadKeypair,
+  registerPublicKey,
+  fetchPendingCredentials,
+  openSealedBlob,
+  claimCredential,
+} from "./credentials.js";
+export type {
+  KeypairGenResult,
+  PendingSealedCredential,
+} from "./credentials.js";

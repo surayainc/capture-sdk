@@ -61,5 +61,8 @@
   },
   "bugs": {
     "url": "https://github.com/surayainc/suraya/issues"
+  },
+  "dependencies": {
+    "libsodium-wrappers": "^0.8.4"
   }
 }
