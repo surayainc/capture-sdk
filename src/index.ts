@@ -62,3 +62,17 @@ export type {
   KeypairGenResult,
   PendingSealedCredential,
 } from "./credentials.js";
+
+// D1 Multi-account-profile linking — same-human attribution across
+// OAuth identities. Lookup-then-mint pattern; primary_handle derived
+// from non-legacy linked accounts.
+export {
+  resolveOperatorAccount,
+  linkAccount,
+} from "./operator-account.js";
+export type {
+  SessionInput,
+  LinkedAccount,
+  ResolvedOperatorAccount,
+  ResolveOptions,
+} from "./operator-account.js";
