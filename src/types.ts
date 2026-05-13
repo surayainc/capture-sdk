@@ -110,6 +110,20 @@ export interface ObservationWire {
    * Only valid when type === "fix".
    */
   fix_metrics?: FixMetricsPayload;
+  /**
+   * v1.6 Thread β — write-time name-scrub status. The SDK runs a
+   * best-effort pass over content fields (summary, context, raw) and
+   * annotates this column. The brain's ingest endpoint runs a second-
+   * pass scrub and overwrites with its own determination — this field
+   * is a hint, not the source of truth.
+   *   - 'scrubbed': content contained at least one non-whitelisted
+   *     match that was replaced with `<op:canonical>`.
+   *   - 'whitelisted_passthrough': only whitelisted (Tier-M) display
+   *     names matched, or no matches at all.
+   * Absent when the SDK's name dictionary wasn't loaded yet (early in
+   * session start) — the server-side pass is then the sole authority.
+   */
+  name_scrub_status?: "scrubbed" | "whitelisted_passthrough";
 }
 
 export interface CaptureOptions {
@@ -153,4 +167,35 @@ export interface CaptureOptions {
    * Default: true.
    */
   enabled?: boolean;
+
+  /**
+   * v1.6 Thread β — operator display-name dictionary used by the
+   * write-time name scrub. Fetched on session start via
+   * `fetchDisplayNameDictionary()` against the brain's
+   * `GET /api/operators/display-names` endpoint and held in process
+   * memory for the session's lifetime.
+   *
+   * Default: empty array (no scrub). The brain's defensive scrub on
+   * ingest is the real backstop; this client-side pass is best-effort.
+   * When unset/empty, all observations land with `name_scrub_status`
+   * undefined and the server pass sets it definitively.
+   */
+  nameDictionary?: Array<{
+    canonical_handle: string;
+    display_name: string;
+    is_whitelisted: boolean;
+    is_high_collision_risk: boolean;
+  }>;
+
+  /**
+   * v1.6 Thread β — scrub aggressiveness. Mirrors capture_policies.
+   * name_scrub_mode (Thread δ). Default 'strict'.
+   *   - 'strict': case-insensitive match for low-collision-risk names;
+   *     case-sensitive + word-boundary for high-collision-risk
+   *     (e.g. "Mark"). Most aggressive; over-scrub is acceptable.
+   *   - 'minimal': word-boundary + capitalization for ALL entries.
+   *     Skips the case-insensitive pass — use when content has
+   *     known-safe paths where false-positive scrubs hurt readability.
+   */
+  nameScrubMode?: "strict" | "minimal";
 }

@@ -112,6 +112,24 @@ export {
 } from "./session-state.js";
 export type { SessionState } from "./session-state.js";
 
+// v1.6 Thread β — write-time name scrub + ID-as-referent enforcement.
+// Operator display-names never enter brain content. Substrate references
+// operators by canonical_handle (op_<26-char ULID>); Kareem's display
+// name is the only whitelisted passthrough. Server-side defensive scrub
+// on the brain ingest endpoint is the real backstop; this is the
+// best-effort write-time pass.
+export {
+  scrubText,
+  scrubObservation,
+  fetchDisplayNameDictionary,
+} from "./name-scrub.js";
+export type {
+  DisplayNameEntry,
+  NameScrubMode,
+  ScrubResult,
+  FetchDictionaryOptions,
+} from "./name-scrub.js";
+
 // v1.5 Thread θ — session-message inbox poller. Receives prompts /
 // pilot_prompts / broadcasts / context_switch_requests from the brain
 // and hands them to the harness's onMessage callback so the agent

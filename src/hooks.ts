@@ -21,6 +21,7 @@ import { hostname } from "node:os";
 import { classifyObservation } from "./classify.js";
 import { redactToolInput } from "./redact.js";
 import { shipObservation } from "./transport.js";
+import { scrubObservation } from "./name-scrub.js";
 import {
   SCHEMA_VERSION,
   type CaptureOptions,
@@ -109,6 +110,27 @@ export function captureHooks(opts: CaptureOptions) {
         tool_response: input.tool_response,
       },
     };
+
+    // v1.6 Thread β — write-time name scrub. Replaces operator
+    // display-names with `<op:canonical>` tokens; whitelisted entries
+    // (currently only kesuraya) pass through unchanged. The brain's
+    // server-side defensive scrub on /api/observations/ingest is the
+    // real backstop — this pass is best-effort. If the dictionary
+    // isn't loaded yet (early in session start), scrub becomes a no-op
+    // and the server-side pass catches everything.
+    const dict = opts.nameDictionary ?? [];
+    if (dict.length > 0) {
+      const result = scrubObservation(
+        obs as unknown as Record<string, unknown>,
+        dict,
+        opts.nameScrubMode ?? "strict",
+      );
+      // Annotate the payload with the scrub status so brain can match
+      // it against the defensive pass. Brain's ingest endpoint trusts
+      // this only as a hint — it re-runs the scrub regardless.
+      obs.name_scrub_status = result.status;
+    }
+
     // Best-effort, non-blocking.
     void shipObservation(obs, transportOpts);
     return {};
