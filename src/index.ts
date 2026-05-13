@@ -178,3 +178,29 @@ export type {
   SubmitUnblockOptions,
   FetchInboundHandoffsOptions,
 } from "./handoff.js";
+
+// v1.6 Thread δ — capture-policy resolver + per-level serializer.
+// Operators configure their capture-policy in the portal; the SDK reads
+// the effective policy on session start (4-rung precedence ladder:
+// project YAML → operator YAML → brain endpoint → hardcoded fallback)
+// and shapes every observation accordingly. The hooks wrap this via
+// `maybeShipUnderPolicy` automatically when `opts.capturePolicy` is set.
+export {
+  CAPTURE_POLICY_LEVELS,
+  KESURAYA_CANONICAL,
+  SNIPPET_CHAR_CAP,
+  parseCapturePolicyYaml,
+  readProjectYaml,
+  readOperatorYaml,
+  fetchBrainEffectivePolicy,
+  resolveCapturePolicy,
+  shapeObservationForLevel,
+  shapeObservationForLevelAsync,
+  maybeShipUnderPolicy,
+  defaultDryRunWriter,
+} from "./capture-policy.js";
+export type {
+  CapturePolicy,
+  CapturePolicyLevel,
+  ResolveCapturePolicyOptions,
+} from "./capture-policy.js";

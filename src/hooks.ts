@@ -22,6 +22,7 @@ import { classifyObservation } from "./classify.js";
 import { redactToolInput } from "./redact.js";
 import { shipObservation } from "./transport.js";
 import { scrubObservation } from "./name-scrub.js";
+import { maybeShipUnderPolicy } from "./capture-policy.js";
 import {
   SCHEMA_VERSION,
   type CaptureOptions,
@@ -118,12 +119,18 @@ export function captureHooks(opts: CaptureOptions) {
     // real backstop — this pass is best-effort. If the dictionary
     // isn't loaded yet (early in session start), scrub becomes a no-op
     // and the server-side pass catches everything.
+    //
+    // The scrub mode picks up from capturePolicy when present (so the
+    // operator's portal-configured scrub propagates), else from the
+    // legacy `nameScrubMode` option. Thread δ aligns these.
+    const scrubMode =
+      opts.capturePolicy?.name_scrub_mode ?? opts.nameScrubMode ?? "strict";
     const dict = opts.nameDictionary ?? [];
     if (dict.length > 0) {
       const result = scrubObservation(
         obs as unknown as Record<string, unknown>,
         dict,
-        opts.nameScrubMode ?? "strict",
+        scrubMode,
       );
       // Annotate the payload with the scrub status so brain can match
       // it against the defensive pass. Brain's ingest endpoint trusts
@@ -131,8 +138,29 @@ export function captureHooks(opts: CaptureOptions) {
       obs.name_scrub_status = result.status;
     }
 
-    // Best-effort, non-blocking.
-    void shipObservation(obs, transportOpts);
+    // v1.6 Thread δ — shape per the resolved capture-policy. When no
+    // policy is supplied, default to FULL (preserves v1.5 behavior).
+    // `maybeShipUnderPolicy` handles OFF (drop), dry_run (stdout sink),
+    // and routes to `shipObservation` otherwise. Best-effort, non-
+    // blocking — wrapped in `void … .catch(…)` so a transport / shape
+    // failure doesn't bubble into the hook return.
+    const policy =
+      opts.capturePolicy ?? {
+        level: "full" as const,
+        dry_run: false,
+        name_scrub_mode: scrubMode,
+        source: "hardcoded_fallback" as const,
+      };
+    void maybeShipUnderPolicy({
+      obs,
+      policy,
+      ship: (shaped) => shipObservation(shaped, transportOpts),
+      abstractFn: opts.abstractFn,
+      dryRunWrite: opts.dryRunWrite,
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[ynk-capture] policy-shaped ship failed: ${msg}\n`);
+    });
     return {};
   };
 

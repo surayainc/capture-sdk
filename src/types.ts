@@ -198,4 +198,34 @@ export interface CaptureOptions {
    *     known-safe paths where false-positive scrubs hurt readability.
    */
   nameScrubMode?: "strict" | "minimal";
+
+  /**
+   * v1.6 Thread δ — pre-resolved capture-policy. When set, hooks shape
+   * each observation per this policy BEFORE shipping (off → drop;
+   * metadata → strip raw + path-hash; abstracted → local-LLM summarize;
+   * snippets → 200-char-bounded raw; full → unchanged). When `dry_run`
+   * is on, the shaped payload is printed to stdout and not POSTed.
+   *
+   * Callers typically resolve this via
+   * `resolveCapturePolicy({...})` once on session start and pass the
+   * result here. Leaving unset is equivalent to FULL — preserves v1.5
+   * behavior for callers that haven't migrated to the policy resolver.
+   */
+  capturePolicy?: import("./capture-policy.js").CapturePolicy;
+
+  /**
+   * v1.6 Thread δ — optional local-LLM callback used when policy.level
+   * is `abstracted`. Receives a bounded text blob; should return a 1-2
+   * sentence summary or null. Failure / timeout = fall back to SNIPPETS
+   * shape automatically.
+   */
+  abstractFn?: (text: string) => Promise<string | null>;
+
+  /**
+   * v1.6 Thread δ — override the dry-run writer. Defaults to
+   * `console.log` with a `[capture:dry-run]` prefix.
+   */
+  dryRunWrite?: (
+    obs: import("./types.js").ObservationWire
+  ) => void;
 }
