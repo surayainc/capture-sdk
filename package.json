@@ -5,15 +5,23 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "suraya": "./bin/suraya.mjs"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./handoff": {
+      "types": "./dist/handoff.d.ts",
+      "import": "./dist/handoff.js"
     }
   },
   "files": [
     "dist/",
     "src/",
+    "bin/",
     "README.md",
     "SKILL.md",
     "LICENSE"

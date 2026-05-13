@@ -76,6 +76,35 @@ import { captureHooks } from "@surayaorg/capture";
 // ...see "Public API" above
 ```
 
+## CLI — `suraya handoff` (v1.6 Thread ε)
+
+Installing the package exposes a `suraya` binary that wraps the
+handoff substrate primitive:
+
+```bash
+suraya handoff <to-canonical-handle> [--scope <scope-node-id>] [--note "..."] [--generate-doc]
+suraya pickup <scope-node-id> [--related <handoff-obs-id>]
+suraya unblock <scope-node-id> --note "what is stuck"
+suraya status <scope-node-id>
+```
+
+Required env (read from the project's Doppler config in the standard
+setup):
+
+- `BRAIN_URL` — e.g. `https://brain.suraya.ai`
+- `SURAYA_BRAIN_WEBHOOK_SECRET_<PROJECT_SLUG_UPPER_SNAKE>` (or fallback
+  `SURAYA_BRAIN_WEBHOOK_SECRET`)
+- `SURAYA_HANDLE` (optional; falls back to the canonical written into
+  `.suraya/session-state.json` by auto-orient)
+
+The CLI requires `.suraya/session-state.json` to be present — a
+Suraya-aware Claude Code session must have already run auto-orient
+in the project root. The library entry points (`resolveHandoffConfig`,
+`submitHandoff`, `submitPickup`, `submitUnblock`,
+`fetchInboundHandoffs`) are also exported for use from non-CLI
+surfaces (Cowork-in-Suraya browser flow or the portal's Tier-M admin
+view).
+
 **Claude Code plugin** — for any project running Claude Code as the primary agent. One-line opt-in in the project's `.claude/settings.json`:
 
 ```json

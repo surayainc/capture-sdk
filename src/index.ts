@@ -147,3 +147,34 @@ export type {
   SessionMessageHandler,
   SessionInboxMessage,
 } from "./session-message-poller.js";
+
+// v1.6 Thread ε — `suraya handoff` CLI orchestrator. Library entry
+// points for submitting handoff / pickup / unblock observations and
+// querying inbound handoffs against the brain endpoints in
+// suraya-brain/src/routes/handoffs.ts. The CLI binary at
+// bin/suraya.mjs is a thin dispatcher over these functions; the
+// orchestrator is also useful from non-CLI surfaces (Cowork-in-Suraya
+// browser flow, portal Tier-M admin view).
+export {
+  resolveHandoffConfig,
+  submitHandoff,
+  submitPickup,
+  submitUnblock,
+  fetchInboundHandoffs,
+  canonicalHandoffsInbound,
+} from "./handoff.js";
+export type {
+  HandoffOrchestratorConfig,
+  HandoffRequestPayload,
+  PickupRequestPayload,
+  UnblockRequestPayload,
+  HandoffResponseEnvelope,
+  PickupResponseEnvelope,
+  UnblockResponseEnvelope,
+  InboundHandoffEnvelope,
+  InboundHandoffsResponse,
+  SubmitHandoffOptions,
+  SubmitPickupOptions,
+  SubmitUnblockOptions,
+  FetchInboundHandoffsOptions,
+} from "./handoff.js";
