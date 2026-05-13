@@ -1,6 +1,12 @@
-# `@surayaorg/capture` — capture SDK skeleton
+# `@surayaorg/capture` — capture SDK
 
-**Status:** v0.1 skeleton. Types, hook signatures, transport stubs. Not yet a published npm package — that's deferred to substrate-go-live.
+**Status:** v0.1.0. Types, hook signatures, transport stubs are stable.
+Publish to npm is operator-triggered (v1.6 Thread α — see
+[publish runbook](https://github.com/surayainc/suraya-portal/blob/main/docs/setup/sdk-publish.md)
+for the exact `gh release create` command + pre-flight gaps).
+
+For operator install steps (per-project default, global alternative,
+opt-out path), see [`docs/onboarding/install.md`](../../docs/onboarding/install.md).
 
 The Track A (automatic) half of the capture pipeline for the [suraya brain](../../docs/brain/SPEC.md). Wires into the [Claude Code Agent SDK](https://docs.claude.com/en/docs/agents-and-tools/agent-sdk) as `PostToolUse` / `UserPromptSubmit` / `Stop` hooks; emits typed observations to a local `.observations.jsonl` and async-POSTs them to the brain substrate's webhook endpoint.
 
@@ -86,16 +92,29 @@ The Track B skill itself is also drop-in standalone (copy `SKILL.md` to `.claude
 
 For filled examples of what the captured observations look like, see [`docs/brain/EXAMPLES.md`](../../docs/brain/EXAMPLES.md).
 
-## Deferred (needs Kareem's involvement)
+## Operator-triggered (per Decision #14 — supply-chain hardening)
 
-- Publish to npm registry (decision: GitHub Packages vs. public npm). Today it lives in suraya/`tools/`.
-- Provision the substrate webhook endpoint (substrate is spec-only tonight; see `docs/brain/SPEC.md`).
-- Add `SURAYA_BRAIN_WEBHOOK_URL` and `SURAYA_BRAIN_WEBHOOK_SECRET` to Doppler for each consuming project.
-- Inject the package + the `/capture` skill into product projects (per the overnight directive: seeds live in suraya, injection is project-by-project).
+- **Publish to npm (public registry).** Decision: public npm under
+  `@surayaorg` scope. Trigger via
+  `gh release create capture-sdk-v0.1.0 -R surayainc/suraya` once the
+  publish workflow lands (see
+  [pre-flight gaps in the portal-side publish runbook](https://github.com/surayainc/suraya-portal/blob/main/docs/setup/sdk-publish.md#open-gaps-before-publish)).
+- Substrate webhook endpoint at `brain.suraya.ai/api/observations/ingest` (live).
+- Per-project HMAC secrets: `SURAYA_BRAIN_WEBHOOK_SECRET_<SLUG>` in Doppler.
+  Tier-M provisions per project on F6 seal.
+- Per-project install via `npm install --save-dev @surayaorg/capture` — see
+  [`docs/onboarding/install.md`](../../docs/onboarding/install.md).
 
-## Why a skeleton vs. a working package
+## History: skeleton → first-publish (v1.6 Thread α)
 
-Three reasons:
-1. **No substrate to send to.** The webhook URL doesn't exist; there's no point shipping a working transport that POSTs into the void.
-2. **Types-first lets us iterate cheaply on the wire format.** The substrate spec at `docs/brain/SPEC.md` defines `ObservationWire`; this skeleton's `types.ts` mirrors it. If the wire shape changes during Kareem's review, it's a one-file edit here vs. a published-package version bump.
-3. **The Track B skill is functional today.** A project can drop `SKILL.md` into `.claude/skills/capture/` and start capturing manually right now — no SDK, no hooks, no substrate. That's the pragmatic capture path until Track A is wired.
+Originally shipped as a typed skeleton (v0.1 spec). Promoted to first-publish
+at v1.6 with the substrate live + per-project install path documented:
+
+1. **Substrate is live** at `brain.suraya.ai/api/observations/ingest`. Transport
+   has a real receiver.
+2. **Wire format is stable.** Types in `src/types.ts` mirror the brain's
+   `ObservationWire`. Semver discipline from v0.1.0 forward; breaking changes
+   only at major bumps.
+3. **Track B `/capture` skill** continues as a drop-in standalone path
+   for projects that want manual capture without taking the full SDK
+   (copy `SKILL.md` into `.claude/skills/capture/`).

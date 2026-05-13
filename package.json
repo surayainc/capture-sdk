@@ -15,7 +15,8 @@
     "dist/",
     "src/",
     "README.md",
-    "SKILL.md"
+    "SKILL.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"
@@ -52,7 +53,7 @@
     "agent-sdk"
   ],
   "author": "Suraya (Kareem Elgendy <kareem@suraya.ai>)",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "homepage": "https://github.com/surayainc/suraya/tree/main/tools/capture-sdk",
   "repository": {
     "type": "git",
