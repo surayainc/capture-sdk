@@ -76,3 +76,38 @@ export type {
   ResolvedOperatorAccount,
   ResolveOptions,
 } from "./operator-account.js";
+
+// Thread γ — Session intelligence: auto-orient on session start,
+// context-switch primitive, resumption state. The hook fires via the
+// Claude Agent SDK session-init lifecycle; the SDK's responsibility is
+// resolving (org, project, role, machine, session_id) and emitting the
+// session_start observation. Subsequent observations flow through the
+// existing transport with the resolved project_slug.
+export {
+  autoOrient,
+  switchContext,
+  findGitRoot,
+  gitRemoteUrl,
+  canonicalGithubSlug,
+  matchProjectByRemote,
+  resolveOrgSlug,
+  fuzzyMatchProject,
+  parseProjectsYamlMinimal,
+  loadProjectsYamlFromFile,
+} from "./auto-orient.js";
+export type {
+  AutoOrientOptions,
+  OrientationOutcome,
+  ContextSwitchOptions,
+  ContextSwitchOutcome,
+  ProjectsYamlDoc,
+  ProjectsYamlEntry,
+} from "./auto-orient.js";
+export {
+  readSessionState,
+  writeSessionState,
+  updateSessionState,
+  sessionStatePath,
+  timeAgo,
+} from "./session-state.js";
+export type { SessionState } from "./session-state.js";
