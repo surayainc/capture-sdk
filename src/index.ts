@@ -111,3 +111,21 @@ export {
   timeAgo,
 } from "./session-state.js";
 export type { SessionState } from "./session-state.js";
+
+// v1.5 Thread θ — session-message inbox poller. Receives prompts /
+// pilot_prompts / broadcasts / context_switch_requests from the brain
+// and hands them to the harness's onMessage callback so the agent
+// executes them as if typed locally (Decision #2: pilot mode is
+// transparent). Started by the harness after captureHooks() is wired.
+//
+// Coordination with Thread γ: when γ lands its auto-orient + context-
+// switch primitives, the poller's `context_switch_request` kind handler
+// will call into γ's switchContext(). For v1.5 Thread θ ship, the
+// harness owns the dispatch.
+export { createSessionMessagePoller } from "./session-message-poller.js";
+export type {
+  SessionMessagePoller,
+  SessionMessagePollerOptions,
+  SessionMessageHandler,
+  SessionInboxMessage,
+} from "./session-message-poller.js";
