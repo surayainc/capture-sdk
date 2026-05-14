@@ -1,6 +1,6 @@
 {
   "name": "@surayaorg/capture",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Capture SDK for the Suraya brain. Track A automatic capture via Claude Code Agent SDK hooks (PostToolUse / UserPromptSubmit / Stop) plus the shipObservation transport for direct emission. Writes typed observations to a local .observations.jsonl and POSTs them HMAC-signed to the brain substrate's webhook.",
   "type": "module",
   "main": "./dist/index.js",
