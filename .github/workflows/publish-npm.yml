@@ -1,0 +1,73 @@
+name: Publish to npm
+
+# Publishes @surayaorg/capture on tag push. Triggered by:
+#   gh release create v0.1.0 --repo surayainc/capture-sdk
+#
+# v1.6 history: this workflow originated in surayainc/suraya as the
+# Option A capture-SDK publish (Thread α). When provenance attestation
+# was added as a mandatory rule in ENGINEERING_OPERATING_MODEL.md
+# v0.7.2 (Thread κ), npm's requirement that --provenance source repos
+# be PUBLIC forced an open-core split — capture-SDK moved out of the
+# private meta repo into this dedicated public repo. Substrate
+# observation: public_package_provenance_forces_open_core_repo_split.
+#
+# Required env secret (production environment): NPM_TOKEN with publish
+# scope on @surayaorg.
+#
+# Required reviewer (production environment): kesuraya, same pattern as
+# brain-sdk-ts and adapter-claude-flow publish workflows.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write  # for npm provenance
+
+jobs:
+  publish:
+    name: Publish @surayaorg/capture
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - name: Verify tag matches package version
+        run: |
+          set -euo pipefail
+          tag_name="${GITHUB_REF_NAME}"
+          tag_version="${tag_name#v}"
+          pkg_version="$(node -p 'require("./package.json").version')"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::tag version ${tag_version} does not match package.json version ${pkg_version}"
+            exit 1
+          fi
+          echo "Tag ${tag_name} matches package.json version ${pkg_version}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck || true
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: |
+          if grep -q '"build"' package.json; then
+            npm run build
+          fi
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
