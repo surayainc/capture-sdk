@@ -62,14 +62,13 @@
   ],
   "author": "Suraya (Kareem Elgendy <kareem@suraya.ai>)",
   "license": "MIT",
-  "homepage": "https://github.com/surayainc/suraya/tree/main/tools/capture-sdk",
+  "homepage": "https://github.com/surayainc/capture-sdk",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/surayainc/suraya.git",
-    "directory": "tools/capture-sdk"
+    "url": "git+https://github.com/surayainc/capture-sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/surayainc/suraya/issues"
+    "url": "https://github.com/surayainc/capture-sdk/issues"
   },
   "dependencies": {
     "libsodium-wrappers": "^0.8.4"
