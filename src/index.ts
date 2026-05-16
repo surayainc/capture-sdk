@@ -204,3 +204,17 @@ export type {
   CapturePolicyLevel,
   ResolveCapturePolicyOptions,
 } from "./capture-policy.js";
+
+// v1.7 Orgs Slice 4 Thread A — device-mapping reporting + bootstrap-
+// path helper. The reporter lands per-(operator, org, project, device)
+// state at brain's /api/device-mappings substrate-fact table; the path
+// helper computes the canonical enforced local path for NEW projects.
+// Existing checkouts are not moved (anti-goal — forward-looking only).
+export { MACHINE_HOSTNAME } from "./device-hostname.js";
+export { computeGitState, notOnThisDevice } from "./git-state.js";
+export type { SyncState, GitStateResult } from "./git-state.js";
+export {
+  reportDeviceMapping,
+  enforcedProjectPath,
+} from "./device-mapping.js";
+export type { ReportDeviceMappingArgs } from "./device-mapping.js";
