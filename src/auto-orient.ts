@@ -21,11 +21,13 @@
  */
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { hostname } from "node:os";
+import { MACHINE_HOSTNAME } from "./device-hostname.js";
 import { dirname, join, resolve } from "node:path";
 import { writeSessionState, type SessionState } from "./session-state.js";
 import { shipObservation, type TransportOptions } from "./transport.js";
 import { SCHEMA_VERSION, type ObservationWire } from "./types.js";
+import { computeGitState } from "./git-state.js";
+import { reportDeviceMapping } from "./device-mapping.js";
 
 /**
  * Minimum shape we need from `governance/projects.yml`. The full schema
@@ -77,6 +79,15 @@ export interface AutoOrientOptions {
    * omitted; the local jsonl still receives the observation. */
   webhookUrl?: string;
   webhookSecret?: string;
+  /** v1.7 Orgs Slice 4 Thread A — optional. When both `brainUrl` and
+   * `portalHmacSecret` are set, auto-orient also reports the
+   * device-mapping (local_path + sync state) to brain's
+   * /api/device-mappings endpoint after the session_start observation
+   * ships. Best-effort; never blocks orientation. Omit to skip
+   * device-mapping reporting (the local jsonl observation still
+   * lands as before). */
+  brainUrl?: string;
+  portalHmacSecret?: string;
 }
 
 export type OrientationOutcome =
@@ -376,7 +387,7 @@ export async function autoOrient(
   }
   const orgSlug = resolveOrgSlug(entry);
   const role = opts.defaultRole ?? "implementation";
-  const machine = hostname();
+  const machine = MACHINE_HOSTNAME;
   const nowIso = new Date().toISOString();
 
   // Mint a session_start observation. The observation_id is the
@@ -410,6 +421,34 @@ export async function autoOrient(
     tags: ["session_start", "thread-gamma", "auto-orient"],
   };
   await shipObservation(observation, opts.transport);
+
+  // v1.7 Orgs Slice 4 Thread A — best-effort device-mapping report.
+  // Mirrors the session_start observation's authority (same canonical,
+  // same org, same project, same machine, same point-in-time). Computed
+  // git state goes to brain's /api/device-mappings substrate-fact table
+  // so the portal's rich Orgs surface can render per-(device, project)
+  // sync status. Never blocks orientation; failures log to stderr.
+  if (opts.brainUrl && opts.portalHmacSecret) {
+    void (async () => {
+      const gs = await computeGitState(gitRoot);
+      if (!gs) {
+        process.stderr.write(
+          `[suraya-capture] git state compute returned null for ${gitRoot}; skipping device-mapping report\n`
+        );
+        return;
+      }
+      await reportDeviceMapping({
+        canonicalHandle: opts.canonicalHandle,
+        orgSlug,
+        projectSlug: entry.slug,
+        localPath: gitRoot,
+        syncState: gs.sync_state,
+        uncommittedChanges: gs.uncommitted_changes,
+        brainUrl: opts.brainUrl as string,
+        portalHmacSecret: opts.portalHmacSecret as string,
+      });
+    })();
+  }
 
   // Write initial state — subsequent observation flow updates this.
   const state: SessionState = {
@@ -550,7 +589,7 @@ export async function switchContext(
       kind: "agent",
       handle: opts.canonicalHandle,
       session_id: opts.sessionId,
-      device: hostname(),
+      device: MACHINE_HOSTNAME,
     },
     summary: `session_context_switch → ${entry.slug} (${orgSlug}, ${role})`,
     context: [

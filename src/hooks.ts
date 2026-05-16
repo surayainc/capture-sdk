@@ -17,7 +17,7 @@
  *   };
  */
 
-import { hostname } from "node:os";
+import { MACHINE_HOSTNAME } from "./device-hostname.js";
 import { classifyObservation } from "./classify.js";
 import { redactToolInput } from "./redact.js";
 import { shipObservation } from "./transport.js";
@@ -99,7 +99,7 @@ export function captureHooks(opts: CaptureOptions) {
       actor: {
         kind: "agent",
         session_id: input.session_id,
-        device: hostname(),
+        device: MACHINE_HOSTNAME,
       },
       summary,
       context: composeContext(input, redactedInput),
