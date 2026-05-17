@@ -28,6 +28,27 @@ export type {
 } from "./types.js";
 export { SCHEMA_VERSION } from "./types.js";
 
+// v1.8 chains feature · Slice 2 · Thread D — chain lifecycle emission.
+// emitChainOpen / emitChainStep / emitChainClose post to brain's
+// /api/chains/{open,step,close} endpoints (HMAC-signed bodies; same
+// per-project webhook secret as shipObservation). See
+// surayainc/suraya/governance/capture-protocol.md v0.4 §"Chain-close
+// decision observation" + §"Co-firing semantics".
+export {
+  emitChainOpen,
+  emitChainStep,
+  emitChainClose,
+} from "./chains.js";
+export type {
+  ChainKind,
+  ChainOutcome,
+  ChainOpenPayload,
+  ChainStepPayload,
+  ChainClosePayload,
+  ChainResult,
+  ChainEmitOptions,
+} from "./chains.js";
+
 // fix_metrics build: timer, draft-state, signal-detect.
 // The skill .mjs (/fix-start, /fix-end, /fix-abandon) composes these
 // with shipObservation() to record fix sessions with metrics.

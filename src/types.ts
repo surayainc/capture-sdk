@@ -71,9 +71,35 @@ export interface ObservationActor {
 }
 
 export interface ObservationLink {
-  kind: "pr" | "commit" | "file" | "linear" | "incident" | "url";
-  href: string;
+  kind:
+    | "pr"
+    | "commit"
+    | "file"
+    | "linear"
+    | "incident"
+    | "url"
+    // v1.8 chains feature Slice 2: chain-close link for slice-close
+    // co-firing canonical ordering authority per capture-protocol v0.4.
+    // observation_id field carries the chain-close observation_id; href
+    // optional (chain-close has no URL, only a brain-table ID).
+    | "chain-close"
+    // Additional v1.8 link types per capture-protocol v0.4 slice-close
+    // schema: handoff doc, build-approval doc, paste-ready doc paths.
+    | "handoff"
+    | "approval"
+    | "paste-ready"
+    | "scope-doc"
+    | "chain-coord-log"
+    | "slice-close";
+  href?: string;
   label?: string;
+  /** v1.8 — observation_id reference for chain-close links per
+   * capture-protocol v0.4 §"Co-firing semantics — chain-close +
+   * slice-close" canonical ordering authority. */
+  observation_id?: string;
+  /** v1.8 — optional path for handoff/approval/paste-ready/scope-doc
+   * link kinds when the linked artifact is a file rather than a URL. */
+  path?: string;
 }
 
 export interface ObservationWire {
