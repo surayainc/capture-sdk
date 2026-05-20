@@ -25,14 +25,32 @@ name: Publish to npm
 # Required reviewer (production environment): kesuraya, same pattern as
 # brain-sdk-ts and adapter-claude-flow publish workflows.
 #
-# Operator-action prerequisites (one-time, completes the TP migration):
+# Operator-action prerequisites (one-time, completes the TP migration).
+# Defense-in-depth per [Re] post-Shai-Hulud canon: a tag-triggered publish
+# workflow needs tag-creation control + environment ref-restriction, not
+# just branch protection, so the manual-approval reviewer isn't the
+# single point of control. Three controls compose:
 #   1. Configure Trusted Publisher on npmjs.com for @surayaorg/capture
 #      with: org=surayainc, repo=capture-sdk, workflow=publish-npm.yml,
 #      environment=production
 #   2. Delete NPM_TOKEN from this repo's production environment secrets
 #      (gh secret delete NPM_TOKEN --env production --repo surayainc/capture-sdk)
-#   3. Verify branch protection on main (publish triggers on tags, but
-#      main is the source-of-truth for tag-creating commits)
+#   3. Ref-protection composite (three sub-items per [Ve] security-config
+#      verification 2026-05-20 — branch protection alone is necessary
+#      but not sufficient when publish triggers on tag push, since a v*
+#      tag can point at any commit from any branch and fire the publish):
+#      3a. Verify branch protection on main — protects the source-of-
+#          truth for tag-creating commits
+#      3b. Add a tag protection rule for the v* pattern (GitHub repo
+#          Settings → Rules → Rulesets with a tag ruleset, or Settings
+#          → Tags) — restricts v* tag creation to authorized maintainers,
+#          preventing arbitrary actors from creating malicious release
+#          tags
+#      3c. Configure the production environment's "Deployment branches
+#          and tags" restriction (Settings → Environments → production)
+#          to limit which refs can deploy — restrict to main and/or
+#          protected v* tags. Even if a tag is created from a non-main
+#          commit, the environment gate refuses to fire the workflow.
 
 on:
   push:
