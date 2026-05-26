@@ -11,11 +11,64 @@ name: Publish to npm
 # private meta repo into this dedicated public repo. Substrate
 # observation: public_package_provenance_forces_open_core_repo_split.
 #
-# Required env secret (production environment): NPM_TOKEN with publish
-# scope on @surayaorg.
+# 2026-05-20 — npm Trusted Publisher migration (Task 5 per Or dispatch
+# 2026-05-20). Authentication migrated from NPM_TOKEN secret to OIDC-
+# based Trusted Publisher. Hardening per [Re] post-Shai-Hulud canon:
+#   - Node 20 → 22.14.0 (Node 22 LTS minimum per security audit)
+#   - GitHub Actions SHA-pinned (replaces @v* float tags)
+#   - npm ci --ignore-scripts (prevents transitive postinstall scripts
+#     from executing during publish runtime; supply-chain hardening)
+#   - NPM_TOKEN env var REMOVED — TP authenticates via id-token write
+#     OIDC flow (permissions.id-token: write below covers both
+#     provenance attestation AND TP authentication)
+#
+# 2026-05-25 — Amended for staged-publish compatibility (Or dispatch
+# 2026-05-25). npm 11.15.0 (GA 2026-05-22) introduced staged
+# publishing: a Trusted Publisher can be scoped to direct `npm publish`
+# OR stage-only `npm stage publish` OR both. Operator configured this
+# package's TP as stage-only (max-security posture; pairs with the
+# disallow-tokens policy already set on @surayaorg/capture). Changes:
+#   - Added `npm install -g npm@11.15.0` step (Node 22.14.0 ships with
+#     npm 10.x; staged publishing requires npm 11.15.0+)
+#   - `npm publish` → `npm stage publish` (a stage-only TP REJECTS the
+#     `npm publish` invocation)
+#   - Operator-approval-via-2FA step now intervenes between CI
+#     publish-step success and version going live; see prereq #1 below
+#     for operator-facing implications
 #
 # Required reviewer (production environment): kesuraya, same pattern as
 # brain-sdk-ts and adapter-claude-flow publish workflows.
+#
+# Operator-action prerequisites (one-time, completes the TP migration).
+# Defense-in-depth per [Re] post-Shai-Hulud canon: a tag-triggered publish
+# workflow needs tag-creation control + environment ref-restriction, not
+# just branch protection, so the manual-approval reviewer isn't the
+# single point of control. Three controls compose:
+#   1. Configure Trusted Publisher on npmjs.com for @surayaorg/capture
+#      with: org=surayainc, repo=capture-sdk, workflow=publish-npm.yml,
+#      environment=production. **Scope: stage-only** (`npm stage
+#      publish` allowed; direct `npm publish` REJECTED). Operator
+#      approves each staged release with 2FA via the npm dashboard
+#      before the version goes live. Pairs with the disallow-tokens
+#      policy already set on @surayaorg/capture.
+#   2. Delete NPM_TOKEN from this repo's production environment secrets
+#      (gh secret delete NPM_TOKEN --env production --repo surayainc/capture-sdk)
+#   3. Ref-protection composite (three sub-items per [Ve] security-config
+#      verification 2026-05-20 — branch protection alone is necessary
+#      but not sufficient when publish triggers on tag push, since a v*
+#      tag can point at any commit from any branch and fire the publish):
+#      3a. Verify branch protection on main — protects the source-of-
+#          truth for tag-creating commits
+#      3b. Add a tag protection rule for the v* pattern (GitHub repo
+#          Settings → Rules → Rulesets with a tag ruleset, or Settings
+#          → Tags) — restricts v* tag creation to authorized maintainers,
+#          preventing arbitrary actors from creating malicious release
+#          tags
+#      3c. Configure the production environment's "Deployment branches
+#          and tags" restriction (Settings → Environments → production)
+#          to limit which refs can deploy — restrict to main and/or
+#          protected v* tags. Even if a tag is created from a non-main
+#          commit, the environment gate refuses to fire the workflow.
 
 on:
   push:
@@ -24,7 +77,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write  # for npm provenance
+  id-token: write  # for npm provenance attestation + TP OIDC authentication
 
 jobs:
   publish:
@@ -32,13 +85,26 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      # SHA-pinned per [Re] post-Shai-Hulud security canon (float tags
+      # can be re-pointed at malicious commits in a compromised-repo
+      # supply-chain attack; SHA pins are immutable).
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22.14.0"  # Node 22 LTS minimum per security audit (was: "20")
           registry-url: "https://registry.npmjs.org"
           cache: npm
+
+      - name: Upgrade npm to >=11.15.0 (staged-publish support)
+        # Node 22.14.0 ships with npm 10.x by default. Staged publishing
+        # (`npm stage publish`) is npm 11.15.0+ only — required because
+        # @surayaorg/capture's Trusted Publisher is configured as
+        # stage-only per operator security posture (npm 2026-05-22 GA;
+        # post-dates initial PR #3 authoring 2026-05-20 — see Or
+        # dispatch 2026-05-25 amending this workflow). Pinned exact for
+        # reproducibility, matching the Action SHA-pin discipline.
+        run: npm install -g npm@11.15.0
 
       - name: Verify tag matches package version
         run: |
@@ -53,7 +119,12 @@ jobs:
           echo "Tag ${tag_name} matches package.json version ${pkg_version}"
 
       - name: Install dependencies
-        run: npm ci
+        # --ignore-scripts prevents transitive deps' postinstall scripts
+        # from executing during publish runtime (supply-chain hardening
+        # per [Re] post-Shai-Hulud canon). Our own build runs via
+        # explicit `npm run build` below, which executes the package's
+        # OWN scripts (which we control) but not transitive scripts.
+        run: npm ci --ignore-scripts
 
       - name: Typecheck
         run: npm run typecheck || true
@@ -67,7 +138,33 @@ jobs:
             npm run build
           fi
 
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+      - name: Stage publish to npm (operator approves via 2FA to go live)
+        # `npm stage publish` (NOT `npm publish`) — staged publishing per
+        # npm 11.15.0+ (GA 2026-05-22). @surayaorg/capture's Trusted
+        # Publisher is configured stage-only per operator's max-security
+        # posture: CI submits package to a staging area, then the
+        # operator approves with 2FA via the npm dashboard before the
+        # version goes live. Pairs with the disallow-tokens policy
+        # already set on the package (no NPM_TOKEN fallback possible by
+        # design).
+        #
+        # No NODE_AUTH_TOKEN — Trusted Publisher authenticates via OIDC
+        # using permissions.id-token: write above. npm cli detects the
+        # CI-provided OIDC token and exchanges it for a short-lived
+        # publish credential. --provenance flag generates SLSA provenance
+        # attestation at stage time; the attestation carries through the
+        # operator-approval promotion to the live version (no re-attest
+        # at promotion).
+        #
+        # Operator workflow post-stage:
+        #   1. CI completes this step → package staged at npm
+        #   2. Operator receives npm dashboard notification + email
+        #   3. Operator visits npmjs.com/package/@surayaorg/capture
+        #      → Staged releases → review + approve with 2FA
+        #   4. Version goes live on the public registry
+        #
+        # Stage rejection / timeout: stage entries expire (per npm docs;
+        # default ~7 days). Operator can reject manually OR let expire.
+        # CI does not retry / replay automatically; a tag-push must
+        # re-fire the workflow to re-stage.
+        run: npm stage publish --access public --provenance
