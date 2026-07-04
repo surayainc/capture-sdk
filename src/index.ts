@@ -38,6 +38,7 @@ export {
   emitChainOpen,
   emitChainStep,
   emitChainClose,
+  readChainSpineIds,
 } from "./chains.js";
 export type {
   ChainKind,
