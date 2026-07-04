@@ -117,6 +117,17 @@ export interface ObservationWire {
   tags: string[];
   raw?: Record<string, unknown>;
   /**
+   * Session-model S3 spine ids — the ENVELOPE CRUX. When SURAYA_ORIENT_V2 is
+   * ON, orient() threads the stable `ses_<ULID>` + current `run_<ULID>` HERE
+   * (top-level), NOT by overwriting actor.session_id (which keeps the CC-UUID
+   * for actor_session_id + the token binding). The brain ingest gate reads
+   * these top-level fields for observations.session_id/run_id. Absent when the
+   * flag is off — the columns stay NULL and the backfill/reconcile owns
+   * attribution. A ses_/run_ prefix is required to land in the columns.
+   */
+  session_id?: string;
+  run_id?: string;
+  /**
    * Cut 1 scoping-maps build: which scope (UUID) this observation was
    * captured under. Optional — observations not tied to a scope are
    * still valid.
