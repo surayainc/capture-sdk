@@ -526,6 +526,21 @@ export interface ContextSwitchOptions {
   newRole?: "implementation" | "scoping" | "pilot";
   /** Transport for the observation. */
   transport: TransportOptions;
+  /**
+   * Session-model S3 (SURAYA_ORIENT_V2). When the flag is ON and these are
+   * provided, switchContext DELEGATES to the orient() fork path (a synchronous
+   * server-side checkpoint + a NEW ses_ under the new scope) instead of the
+   * legacy in-place relabel. Absent / flag-off keeps the legacy relabel
+   * behavior verbatim.
+   */
+  brainUrl?: string;
+  brainHmacSecret?: string;
+  /** The new scope to fork into (a brain scopes.id or a signal token). When
+   * omitted, the project pivot itself is the scope change. */
+  toScopeId?: string | null;
+  toScopeSignal?: string | null;
+  /** Test override for the flag. */
+  flagEnabled?: boolean;
 }
 
 export type ContextSwitchOutcome =
@@ -535,6 +550,11 @@ export type ContextSwitchOutcome =
       org_slug: string;
       role: "implementation" | "scoping" | "pilot";
       repo_url: string | null;
+      /** Session-model S3: present when the flag-on fork path ran. The NEW
+       * ses_/run_ minted under the new scope + the checkpointed prior. */
+      forked_session_id?: string;
+      forked_run_id?: string;
+      checkpointed_session_id?: string;
     }
   | { kind: "ambiguous"; candidates: ProjectsYamlEntry[] }
   | { kind: "no_match" };
@@ -576,6 +596,47 @@ export async function switchContext(
   const orgSlug = resolveOrgSlug(entry);
   const role = opts.newRole ?? "implementation";
   const nowIso = new Date().toISOString();
+
+  // ── Session-model S3 (SURAYA_ORIENT_V2) — the FORK path. ────────────────
+  // Instead of the legacy in-place relabel (which kept the same session_id —
+  // §1.5.5), delegate to orient()'s fork: the brain writes a synchronous
+  // scope_state checkpoint under the OLD (session,run), checkpoints the prior
+  // session, and mints a NEW ses_ under the new scope. Dynamic import breaks
+  // the orient.ts ↔ auto-orient.ts static cycle. Requires the flag ON + a
+  // provisioned brain + a target root to write state into; otherwise falls
+  // through to the legacy relabel below (which is preserved verbatim).
+  const { orientV2Enabled } = await import("./orient.js");
+  const flagOn = opts.flagEnabled ?? orientV2Enabled();
+  if (flagOn && opts.brainUrl && opts.brainHmacSecret && opts.newProjectRoot) {
+    const { forkSession } = await import("./orient.js");
+    const res = await forkSession({
+      cwd: opts.newProjectRoot,
+      canonicalHandle: opts.canonicalHandle,
+      sessionId: opts.sessionId,
+      defaultRole: role,
+      transport: opts.transport,
+      fetchProjectsYaml: async () => opts.doc,
+      brainUrl: opts.brainUrl,
+      brainHmacSecret: opts.brainHmacSecret,
+      toScopeId: opts.toScopeId ?? null,
+      toScopeSignal: opts.toScopeSignal ?? opts.query,
+      flagEnabled: true,
+    });
+    if (res.kind === "oriented") {
+      return {
+        kind: "switched",
+        project_slug: res.project_slug ?? entry.slug,
+        org_slug: res.org_slug ?? orgSlug,
+        role,
+        repo_url: entry.repo,
+        forked_session_id: res.session_id,
+        forked_run_id: res.run_id,
+        checkpointed_session_id: res.checkpointed_session_id,
+      };
+    }
+    // If the fork degraded (mint failed / unprovisioned), fall through to the
+    // legacy relabel so the switch is never lost.
+  }
 
   const observation: ObservationWire = {
     schema_version: SCHEMA_VERSION,

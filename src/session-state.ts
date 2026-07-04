@@ -46,6 +46,12 @@ import {
 import { join } from "node:path";
 
 export interface SessionState {
+  /**
+   * Session-model S3: post-orient-v2 this is the STABLE work-identity id
+   * `ses_<ULID>` (spans runs/machines/restarts). Pre-v2 (SURAYA_ORIENT_V2
+   * off) it stays the harness window/session id, unchanged — the field name
+   * is preserved for back-compat. A ses_ prefix distinguishes the two.
+   */
   session_id: string;
   canonical_handle: string;
   project_slug: string;
@@ -56,6 +62,24 @@ export interface SessionState {
   active_scope_id?: string | null;
   active_constellation_node_id?: string | null;
   context_summary?: string;
+  /**
+   * Session-model S3: the current run of this session, `run_<ULID>`. Written
+   * by orient()/openNewRun; threaded into every emission envelope. Absent
+   * pre-v2. A restart under the same scope mints a NEW run_id under the SAME
+   * session_id.
+   */
+  run_id?: string;
+  /**
+   * Session-model S3: the resolved BRAIN scopes.id (UUID) this session is
+   * attributed to. Distinct from active_scope_id (a portal/legacy UUID). NULL
+   * for an unscoped session. Written by orient() after scope resolution.
+   */
+  brain_scope_id?: string | null;
+  /**
+   * Session-model S3: run_seq within the session (1,2,3…). Informational; the
+   * brain is authoritative. Handy for the resume prompt ("run 3 of X").
+   */
+  run_seq?: number;
 }
 
 const STATE_DIR = ".suraya";

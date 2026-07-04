@@ -124,6 +124,24 @@ export type {
   ProjectsYamlDoc,
   ProjectsYamlEntry,
 } from "./auto-orient.js";
+// Session-model S3 — the single orient() rite (supersedes bare autoOrient when
+// SURAYA_ORIENT_V2 is ON; delegates to autoOrient when OFF).
+export {
+  orient,
+  forkSession,
+  detectRunReason,
+  resolveProjectPivot,
+  orientV2Enabled,
+  ORIENT_V2_FLAG,
+  currentBranch,
+} from "./orient.js";
+export type {
+  OrientOptions,
+  OrientResult,
+  RunEnv,
+  RunReason,
+  OperatorMode,
+} from "./orient.js";
 export {
   readSessionState,
   writeSessionState,

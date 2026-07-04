@@ -23,11 +23,41 @@ import { redactToolInput } from "./redact.js";
 import { shipObservation } from "./transport.js";
 import { scrubObservation } from "./name-scrub.js";
 import { maybeShipUnderPolicy } from "./capture-policy.js";
+import { findGitRoot } from "./auto-orient.js";
+import { readSessionState } from "./session-state.js";
+import { orientV2Enabled } from "./orient.js";
 import {
   SCHEMA_VERSION,
   type CaptureOptions,
   type ObservationWire,
 } from "./types.js";
+
+/**
+ * Session-model S3 envelope threading. When SURAYA_ORIENT_V2 is ON, read the
+ * ses_/run_ ids that orient() wrote to .suraya/session-state.json and stamp
+ * them (top-level) onto every emission — the ENVELOPE CRUX (they ride distinct
+ * fields, NOT actor.session_id, so the CC-UUID + token binding stay intact).
+ * Resolved lazily + cached per cwd; a cache miss just means no spine ids this
+ * hook (the backfill still attributes). Returns null when the flag is off.
+ */
+function spineIdsForCwd(
+  cwd: string | undefined,
+  cache: Map<string, { session_id?: string; run_id?: string } | null>
+): { session_id?: string; run_id?: string } | null {
+  if (!orientV2Enabled()) return null;
+  const key = cwd ?? process.cwd();
+  if (cache.has(key)) return cache.get(key) ?? null;
+  let result: { session_id?: string; run_id?: string } | null = null;
+  const root = findGitRoot(key);
+  if (root) {
+    const state = readSessionState(root);
+    if (state?.session_id?.startsWith("ses_")) {
+      result = { session_id: state.session_id, run_id: state.run_id };
+    }
+  }
+  cache.set(key, result);
+  return result;
+}
 
 interface HookResult {
   // SDK-defined; capture hooks always return empty decision = pass-through.
@@ -71,6 +101,11 @@ export function captureHooks(opts: CaptureOptions) {
     webhookUrl: opts.webhookUrl,
     webhookSecret: opts.webhookSecret,
   };
+  // Per-cwd cache for the S3 spine ids (session-state read once per cwd).
+  const spineCache = new Map<
+    string,
+    { session_id?: string; run_id?: string } | null
+  >();
 
   const onPostToolUse = async (input: PostToolUseInput): Promise<HookResult> => {
     const type = classifyObservation({
@@ -111,6 +146,15 @@ export function captureHooks(opts: CaptureOptions) {
         tool_response: input.tool_response,
       },
     };
+
+    // Session-model S3 — thread the ses_/run_ spine ids (flag-gated). Stamped
+    // top-level (NOT on actor.session_id, which keeps the CC-UUID). Null when
+    // the flag is off or no oriented state exists for this cwd.
+    const spine = spineIdsForCwd(input.cwd, spineCache);
+    if (spine?.session_id) {
+      obs.session_id = spine.session_id;
+      if (spine.run_id) obs.run_id = spine.run_id;
+    }
 
     // v1.6 Thread β — write-time name scrub. Replaces operator
     // display-names with `<op:canonical>` tokens; whitelisted entries
