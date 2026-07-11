@@ -28,6 +28,18 @@ import { shipObservation, type TransportOptions } from "./transport.js";
 import { SCHEMA_VERSION, type ObservationWire } from "./types.js";
 import { computeGitState } from "./git-state.js";
 import { reportDeviceMapping } from "./device-mapping.js";
+// Bulletproof-routing Thread A — the ONE shared repo canonicalizer + origin-only
+// remote picker (invariants 6 + 7). Re-exported so the existing export surface
+// (index.ts / orient.ts import canonicalGithubSlug from here) is unchanged.
+import {
+  canonicalGithubSlug,
+  canonicalizeRepo,
+  serializeRepoCanon,
+  pickOriginRemote,
+  type RepoCanon,
+} from "./repo-canon.js";
+export { canonicalGithubSlug, canonicalizeRepo, serializeRepoCanon };
+export type { RepoCanon };
 
 /**
  * Minimum shape we need from `governance/projects.yml`. The full schema
@@ -138,9 +150,11 @@ export function findGitRoot(startDir: string): string | null {
 }
 
 /**
- * Run `git remote -v` in the project root and return the origin URL if
- * present. Falls back to the first listed remote if `origin` is absent.
- * Returns null if no remotes are configured.
+ * Run `git remote -v` in the project root and return the URL of the remote
+ * named `origin`. INVARIANT 7 (origin-only): if `origin` is absent it returns
+ * null — it NEVER falls back to another remote (a fork whose origin was
+ * renamed/removed must not be attributed to its `upstream`). Returns null if no
+ * remotes are configured. Fail-open by construction.
  */
 export function gitRemoteUrl(gitRoot: string): string | null {
   let out: string;
@@ -153,37 +167,12 @@ export function gitRemoteUrl(gitRoot: string): string | null {
   } catch {
     return null;
   }
-  const lines = out.split("\n").filter((l) => l.includes("(fetch)"));
-  if (lines.length === 0) return null;
-  const origin = lines.find((l) => l.startsWith("origin\t"));
-  const target = origin ?? lines[0];
-  if (!target) return null;
-  // Format: "origin  git@github.com:org/repo.git (fetch)"
-  const m = target.match(/^\S+\s+(\S+)\s+\(fetch\)/);
-  return m?.[1] ?? null;
+  return pickOriginRemote(out).url;
 }
 
-/**
- * Normalize SSH + HTTPS GitHub URLs to a canonical "org/repo" string for
- * matching against `projects.yml`. Handles:
- *
- *   - git@github.com:surayainc/suraya.git
- *   - https://github.com/surayainc/suraya
- *   - https://github.com/surayainc/suraya.git
- *
- * Returns null if the URL isn't a recognized GitHub remote.
- */
-export function canonicalGithubSlug(remoteUrl: string): string | null {
-  // SSH form
-  const ssh = remoteUrl.match(/^git@github\.com:([^/]+)\/([^./]+?)(?:\.git)?$/);
-  if (ssh) return `${ssh[1]}/${ssh[2]}`;
-  // HTTPS form
-  const https = remoteUrl.match(
-    /^https?:\/\/github\.com\/([^/]+)\/([^/.]+?)(?:\.git)?\/?$/
-  );
-  if (https) return `${https[1]}/${https[2]}`;
-  return null;
-}
+// canonicalGithubSlug (unified, invariant 6) is imported + re-exported from
+// ./repo-canon.js above — the inline SSH/HTTPS-only, no-lowercase, dotted-repo-
+// rejecting copy that used to live here is gone.
 
 /**
  * Match the remote URL against projects.yml. Returns 0 or more candidate

@@ -1,0 +1,32 @@
+{
+  "$note": "CANONICAL shared test vector for the bulletproof-routing repo canonicalizer (invariant 6). This file is the SOURCE OF TRUTH. Byte-identical copies are VENDORED into every runtime that routes: capture-sdk/src/repo-canon.vector.json and suraya-portal/src/lib/repo-canon.vector.json. Each runtime's own canonicalizer impl (suraya .claude/hooks/_repo-canon.mjs, capture-sdk src/repo-canon.ts, suraya-portal src/lib/repo-canon.ts) is exercised against this vector by its own test. FORK A = per-runtime impls + one shared vector (mirrors the _git-state.mjs <-> device-sig.ts byte-identity-by-shared-contract precedent). If you change a case here, update every vendored copy in lockstep.",
+  "$expected_encoding": "resolved -> the lower(org/repo) slug; non-github host -> '!unresolvable:non_github_host:<host>'; anything unparseable/empty -> '!unresolvable:unparseable'. serializeRepoCanon() produces exactly this string in every runtime.",
+  "cases": [
+    { "input": "git@github.com:surayainc/suraya.git", "expected": "surayainc/suraya", "why": "SCP SSH form" },
+    { "input": "https://github.com/surayainc/suraya", "expected": "surayainc/suraya", "why": "HTTPS no suffix" },
+    { "input": "https://github.com/surayainc/suraya.git", "expected": "surayainc/suraya", "why": "HTTPS .git suffix stripped" },
+    { "input": "https://github.com/surayainc/suraya/", "expected": "surayainc/suraya", "why": "trailing slash" },
+    { "input": "ssh://git@github.com/surayainc/suraya.git", "expected": "surayainc/suraya", "why": "ssh:// scheme form" },
+    { "input": "ssh://git@github.com:22/surayainc/suraya.git", "expected": "surayainc/suraya", "why": "ssh:// with port" },
+    { "input": "git://github.com/surayainc/suraya.git", "expected": "surayainc/suraya", "why": "git:// scheme form" },
+    { "input": "https://github.com/SurayaInc/Portal", "expected": "surayainc/portal", "why": "CASING — the headline mis-match bug; org+repo lowercased" },
+    { "input": "git@github.com:SurayaInc/Portal.git", "expected": "surayainc/portal", "why": "casing over SCP form" },
+    { "input": "SurayaInc/Portal", "expected": "surayainc/portal", "why": "bare Owner/Repo shorthand (no host) treated as github" },
+    { "input": "Owner/Repo.js", "expected": "owner/repo.js", "why": "bare + DOTTED repo — the scope's literal example" },
+    { "input": "https://github.com/surayainc/capture.js", "expected": "surayainc/capture.js", "why": "DOTTED repo name accepted (old hook/SDK regex REJECTED this)" },
+    { "input": "git@github.com:kesuraya/kesuraya.github.io.git", "expected": "kesuraya/kesuraya.github.io", "why": "DOTTED .github.io repo; .git stripped but inner dots preserved" },
+    { "input": "https://x-access-token:ghs_EXAMPLETOKEN@github.com/surayainc/suraya.git", "expected": "surayainc/suraya", "why": "USERINFO (token) stripped" },
+    { "input": "https://user@github.com/surayainc/suraya", "expected": "surayainc/suraya", "why": "userinfo (user only) stripped" },
+    { "input": "https://github.com/suraya-org/suraya", "expected": "surayainc/suraya", "why": "DEALIAS suraya-org -> surayainc" },
+    { "input": "git@github.com:ynk-org/veiled-erp.git", "expected": "ynkincubatorhq/veiled-erp", "why": "DEALIAS ynk-org -> ynkincubatorhq" },
+    { "input": "https://github.com/ynk/ynk-hiring", "expected": "ynkincubatorhq/ynk-hiring", "why": "DEALIAS bare ynk -> ynkincubatorhq" },
+    { "input": "https://github.com/surayainc/suraya-brain.git", "expected": "surayainc/suraya-brain", "why": "hyphenated repo not over-stripped" },
+    { "input": "git@github.example.com:surayainc/suraya.git", "expected": "!unresolvable:non_github_host:github.example.com", "why": "GHE -> TYPED unresolvable, NOT null-collapse" },
+    { "input": "https://gitlab.com/x/y", "expected": "!unresolvable:non_github_host:gitlab.com", "why": "non-github host -> typed unresolvable" },
+    { "input": "https://bitbucket.org/foo/bar.git", "expected": "!unresolvable:non_github_host:bitbucket.org", "why": "non-github host -> typed unresolvable" },
+    { "input": "https://github.com/org/repo/tree/main", "expected": "!unresolvable:unparseable", "why": "deep link (3+ path segments) is not a bare owner/repo remote -> unparseable, never mis-attributed" },
+    { "input": "not a git remote at all", "expected": "!unresolvable:unparseable", "why": "garbage" },
+    { "input": "", "expected": "!unresolvable:unparseable", "why": "empty" },
+    { "input": null, "expected": "!unresolvable:unparseable", "why": "null input is total, never throws" }
+  ]
+}
