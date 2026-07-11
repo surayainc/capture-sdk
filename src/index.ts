@@ -111,6 +111,8 @@ export {
   findGitRoot,
   gitRemoteUrl,
   canonicalGithubSlug,
+  canonicalizeRepo,
+  serializeRepoCanon,
   matchProjectByRemote,
   resolveOrgSlug,
   fuzzyMatchProject,
@@ -124,6 +126,7 @@ export type {
   ContextSwitchOutcome,
   ProjectsYamlDoc,
   ProjectsYamlEntry,
+  RepoCanon,
 } from "./auto-orient.js";
 // Session-model S3 — the single orient() rite (supersedes bare autoOrient when
 // SURAYA_ORIENT_V2 is ON; delegates to autoOrient when OFF).

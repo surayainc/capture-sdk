@@ -267,32 +267,59 @@ function findGitRoot(startDir) {
   return null;
 }
 
+// Bulletproof-routing Thread A (invariants 6 + 7). This standalone diagnostic
+// script keeps its self-contained posture (it runs from an installed package),
+// so the unified canonicalizer + origin-only picker are inlined here — behavior
+// must match src/repo-canon.ts and the shared repo-canon.vector.json.
+const ORG_ALIASES = {
+  "suraya-org": "surayainc",
+  "ynk-org": "ynkincubatorhq",
+  ynk: "ynkincubatorhq",
+};
+const SCHEME_RE =
+  /^(?:https?|ssh|git):\/\/(?:[^@/]+@)?([^:/]+)(?::\d+)?\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i;
+const SCP_RE = /^(?:[^@]+@)?([a-z0-9._-]+):([^/]+)\/([^/]+?)(?:\.git)?\/?$/i;
+const BARE_RE = /^([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\/([^/]+?)(?:\.git)?\/?$/i;
+
+// INVARIANT 7 — origin-only; never fall back to another remote.
 function gitRemoteUrl(gitRoot) {
+  let out;
   try {
-    const out = execSync("git remote -v", {
+    out = execSync("git remote -v", {
       cwd: gitRoot,
       encoding: "utf8",
       timeout: 5_000,
     });
-    const lines = out.split("\n").filter((l) => l.includes("(fetch)"));
-    if (lines.length === 0) return null;
-    const origin = lines.find((l) => l.startsWith("origin\t"));
-    const target = origin ?? lines[0];
-    const m = target.match(/^\S+\s+(\S+)\s+\(fetch\)/);
-    return m?.[1] ?? null;
   } catch {
     return null;
   }
+  const fetchLines = out.split("\n").filter((l) => l.includes("(fetch)"));
+  const originLine = fetchLines.find((l) => l.startsWith("origin\t"));
+  if (!originLine) return null; // NEVER lines[0]
+  const m = originLine.match(/^\S+\s+(\S+)\s+\(fetch\)/);
+  return m?.[1] ?? null;
 }
 
+// INVARIANT 6 — unified canonicalizer (string form: slug when resolved, else null).
 function canonicalGithubSlug(remoteUrl) {
-  const ssh = remoteUrl.match(/^git@github\.com:([^/]+)\/([^./]+?)(?:\.git)?$/);
-  if (ssh) return `${ssh[1]}/${ssh[2]}`;
-  const https = remoteUrl.match(
-    /^https?:\/\/github\.com\/([^/]+)\/([^/.]+?)(?:\.git)?\/?$/
-  );
-  if (https) return `${https[1]}/${https[2]}`;
-  return null;
+  if (remoteUrl == null) return null;
+  const s = String(remoteUrl).trim();
+  if (s === "") return null;
+  let host, owner, repo, m;
+  if ((m = s.match(SCHEME_RE))) [, host, owner, repo] = m;
+  else if ((m = s.match(SCP_RE))) [, host, owner, repo] = m;
+  else if ((m = s.match(BARE_RE))) {
+    host = "github.com";
+    [, owner, repo] = m;
+  } else return null;
+  if (host.toLowerCase() !== "github.com") return null; // GHE/non-github
+  const ownerL = owner.toLowerCase();
+  const org = Object.prototype.hasOwnProperty.call(ORG_ALIASES, ownerL)
+    ? ORG_ALIASES[ownerL]
+    : ownerL;
+  const repoL = repo.toLowerCase();
+  if (!org || !repoL) return null;
+  return `${org}/${repoL}`;
 }
 
 function matchProjectByRemote(doc, remoteUrl) {
