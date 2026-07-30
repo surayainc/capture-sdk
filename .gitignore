@@ -1,3 +1,10 @@
-node_modules/
+# NO trailing slash — deliberate. `node_modules/` matches a DIRECTORY only, never a
+# SYMLINK. Worktree setups routinely symlink node_modules to a sibling checkout to save
+# disk, and with the trailing-slash form git reports that symlink as untracked — so the
+# worktree reads dirty and the `suraya atlas-sync` dirty-tree guard refuses to move the
+# repo. Measured 2026-07-29: 14 of brain's 16 linked worktrees read dirty for this reason
+# and nothing else. The bare form matches both a directory and a symlink.
+# Canonical source: surayainc/suraya templates/.gitignore (fixed in #251).
+node_modules
 dist/
 *.tgz
