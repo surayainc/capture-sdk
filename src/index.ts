@@ -183,6 +183,10 @@ export type {
 // switch primitives, the poller's `context_switch_request` kind handler
 // will call into γ's switchContext(). For v1.5 Thread θ ship, the
 // harness owns the dispatch.
+export { createHeartbeatDaemon } from "./heartbeat.js";
+export type { HeartbeatDaemon, HeartbeatDaemonOptions } from "./heartbeat.js";
+export { spawnHeartbeatDaemon } from "./heartbeat-spawn.js";
+export type { SpawnHeartbeatOptions, SpawnHeartbeatResult } from "./heartbeat-spawn.js";
 export { createSessionMessagePoller } from "./session-message-poller.js";
 export type {
   SessionMessagePoller,
