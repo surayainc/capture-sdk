@@ -124,7 +124,12 @@ export function spawnHeartbeatDaemon(
   // Record the lock (best-effort).
   try {
     const dir = dirname(lockPath);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    // No existsSync guard: `recursive: true` is already idempotent and does not
+    // throw on EEXIST, so the check added nothing and created a check-then-act
+    // race (CodeQL js/file-system-race). Removing it is strictly better code, not
+    // a suppression — and it matters here because the operator routinely runs
+    // three concurrent IDE sessions, so two spawners can interleave for real.
+    mkdirSync(dir, { recursive: true });
     if (pid) writeFileSync(lockPath, String(pid), "utf8");
   } catch {
     /* best-effort — a missing lock only risks a duplicate daemon, not correctness */
