@@ -13,7 +13,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -73,16 +73,50 @@ export function spawnHeartbeatDaemon(
     return { spawned: false, pid: null, reason: "no webhook secret — daemon would be a no-op", lockPath };
   }
 
-  // Single-daemon-per-root guard.
-  try {
-    if (existsSync(lockPath)) {
-      const prior = Number.parseInt(readFileSync(lockPath, "utf8").trim(), 10);
+  // ── Single-daemon-per-root guard, acquired ATOMICALLY ──────────────────────
+  //
+  // The previous shape was `existsSync(lockPath)` → read → decide → (much later)
+  // `writeFileSync(lockPath)`. That is check-then-act across a spawn: two
+  // spawners can BOTH observe "no live lock" and BOTH spawn. CodeQL flagged it
+  // (js/file-system-race), and it is not theoretical — the operator routinely
+  // runs three concurrent IDE sessions on one machine, which is exactly the
+  // interleaving required.
+  //
+  // `openSync(path, "wx")` creates-or-fails in ONE syscall, so exactly one
+  // spawner can win the race. The loser reads the winner's pid and returns. A
+  // STALE lock (holder died without cleanup — a kill -9, a reclaimed mount) is
+  // reclaimed by removing it and retrying the same atomic create exactly ONCE;
+  // bounded, so two racing reclaimers cannot livelock.
+  //
+  // Fail-open is preserved: any unexpected error falls through and spawns. A
+  // duplicate daemon is wasteful but harmless — the consumer reads a MAX
+  // watermark — whereas NOT spawning loses the liveness signal entirely, which
+  // is the failure this daemon exists to prevent.
+  let lockFd: number | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      mkdirSync(dirname(lockPath), { recursive: true });
+      lockFd = openSync(lockPath, "wx");
+      break; // won the race
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") break; // fail open
+      let prior = Number.NaN;
+      try {
+        prior = Number.parseInt(readFileSync(lockPath, "utf8").trim(), 10);
+      } catch {
+        /* unreadable — treat as stale */
+      }
       if (Number.isFinite(prior) && pidAlive(prior)) {
         return { spawned: false, pid: prior, reason: "a live heartbeat daemon already holds the lock", lockPath };
       }
+      if (attempt === 0) {
+        try {
+          rmSync(lockPath, { force: true });
+        } catch {
+          break; // cannot reclaim — fail open
+        }
+      }
     }
-  } catch {
-    // Unreadable lock — fall through and (re)spawn.
   }
 
   const entry = opts.daemonEntry ?? defaultDaemonEntry();
@@ -110,6 +144,18 @@ export function spawnHeartbeatDaemon(
       env: { ...process.env, SURAYA_HEARTBEAT_SECRET: opts.webhookSecret },
     });
   } catch (err) {
+    // Release the lock we hold — otherwise a failed spawn leaves an EMPTY lock
+    // that the next spawner must treat as stale and reclaim. Self-healing either
+    // way, but leaving it costs a spawn cycle for no reason.
+    try {
+      if (lockFd !== null) {
+        closeSync(lockFd);
+        rmSync(lockPath, { force: true });
+        lockFd = null;
+      }
+    } catch {
+      /* best-effort */
+    }
     return { spawned: false, pid: null, reason: `spawn failed: ${(err as Error).message}`, lockPath };
   }
 
@@ -121,18 +167,23 @@ export function spawnHeartbeatDaemon(
     /* best-effort */
   }
 
-  // Record the lock (best-effort).
+  // Write the pid INTO the descriptor we already hold, then release it. No
+  // second path lookup, so there is no window between deciding and recording —
+  // that gap was the race. If we never acquired the lock (fail-open path above)
+  // there is nothing to write, and a duplicate daemon is the accepted cost.
   try {
-    const dir = dirname(lockPath);
-    // No existsSync guard: `recursive: true` is already idempotent and does not
-    // throw on EEXIST, so the check added nothing and created a check-then-act
-    // race (CodeQL js/file-system-race). Removing it is strictly better code, not
-    // a suppression — and it matters here because the operator routinely runs
-    // three concurrent IDE sessions, so two spawners can interleave for real.
-    mkdirSync(dir, { recursive: true });
-    if (pid) writeFileSync(lockPath, String(pid), "utf8");
+    if (lockFd !== null) {
+      if (pid) writeSync(lockFd, String(pid));
+      closeSync(lockFd);
+      lockFd = null;
+    }
   } catch {
-    /* best-effort — a missing lock only risks a duplicate daemon, not correctness */
+    /* best-effort — a missing pid only risks a duplicate daemon, not correctness */
+    try {
+      if (lockFd !== null) closeSync(lockFd);
+    } catch {
+      /* ignore */
+    }
   }
 
   return { spawned: true, pid, reason: "spawned detached heartbeat daemon", lockPath };
