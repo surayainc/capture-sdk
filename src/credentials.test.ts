@@ -6,8 +6,9 @@
  * (registerPublicKey, fetchPendingCredentials, claimCredential) are
  * covered by end-to-end tests against brain prd in a separate suite.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import _sodium from "libsodium-wrappers";
+import { promises as fsp } from "node:fs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -104,6 +105,55 @@ describe("F6 capture-SDK credentials", () => {
       ]);
       expect(allow.filter((s) => NON_OWNER.has(s))).toEqual([]);
       expect([...new Set(allow)]).toEqual([acl.me]);
+    }
+  );
+
+  // The key file must be created EMPTY and locked BEFORE any secret bytes are
+  // written, so the key material never exists on disk under inherited/loose
+  // perms. Asserted against the REAL generateKeypair by spying on node:fs's
+  // writeFile/chmod (the exact bindings credentials.ts calls) and checking the
+  // cross-call order via invocationCallOrder. POSIX path (chmod is the harden
+  // step); host-independent (runs on ubuntu + mac). On win32 the harden step is
+  // icacls, not chmod — the real windows-latest effective-access test above
+  // proves the DACL survives the truncate-rewrite, i.e. the secret lands locked.
+  it.skipIf(process.platform === "win32")(
+    "creates the key file empty and locks it BEFORE writing secret bytes (POSIX)",
+    async () => {
+      const wf = vi.spyOn(fsp, "writeFile");
+      const ch = vi.spyOn(fsp, "chmod");
+      try {
+        await generateKeypair("test-project");
+
+        const privWrites = wf.mock.calls
+          .map((args, i) => ({
+            order: wf.mock.invocationCallOrder[i]!,
+            path: String(args[0]),
+            len: typeof args[1] === "string" ? args[1].length : -1,
+          }))
+          .filter((w) => w.path.endsWith(".priv"));
+        const privHarden = ch.mock.calls
+          .map((args, i) => ({
+            order: ch.mock.invocationCallOrder[i]!,
+            path: String(args[0]),
+            mode: args[1],
+          }))
+          .filter((c) => c.path.endsWith(".priv") && c.mode === 0o600);
+
+        // First .priv write is EMPTY; a later one carries the secret.
+        expect(privWrites.length).toBeGreaterThanOrEqual(2);
+        const emptyWrite = privWrites[0]!;
+        const secretWrite = privWrites[privWrites.length - 1]!;
+        expect(emptyWrite.len).toBe(0);
+        expect(secretWrite.len).toBeGreaterThan(0);
+
+        // Ordering: empty-create < harden(0600) < secret-write.
+        expect(privHarden.length).toBeGreaterThanOrEqual(1);
+        const hardenOrder = privHarden[0]!.order;
+        expect(emptyWrite.order).toBeLessThan(hardenOrder);
+        expect(hardenOrder).toBeLessThan(secretWrite.order);
+      } finally {
+        vi.restoreAllMocks();
+      }
     }
   );
 

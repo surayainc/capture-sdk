@@ -234,11 +234,17 @@ export async function generateKeypair(
   const publicKeyB64 = sodium.to_base64(kp.publicKey, sodium.base64_variants.ORIGINAL);
   const privateKeyB64 = sodium.to_base64(kp.privateKey, sodium.base64_variants.ORIGINAL);
 
-  await fs.writeFile(privPath, privateKeyB64 + "\n", { mode: 0o600 });
-  // Owner-only lockdown. POSIX: chmod 0600. Windows: icacls (the mode above is
-  // a no-op there). Runs AFTER the write; a truncate-rewrite preserves the ACL,
-  // so this holds across an intentional --force rotation too.
+  // Create-empty -> harden -> write-secret. The key file is created EMPTY and
+  // locked to the current user BEFORE any secret bytes touch disk, so the key
+  // material never exists under inherited/loose permissions — not even for the
+  // microsecond a write-then-harden ordering would expose. The final write is a
+  // truncate-rewrite of the existing file, which PRESERVES its DACL on Windows
+  // (CreateFile CREATE_ALWAYS does not reset the security descriptor of an
+  // existing object) and its mode on POSIX; so the secret lands in the
+  // already-owner-only file. Holds across an intentional --force rotation too.
+  await fs.writeFile(privPath, "", { mode: 0o600 });
   await hardenToOwner(privPath, { dir: false });
+  await fs.writeFile(privPath, privateKeyB64 + "\n", { mode: 0o600 });
   await fs.writeFile(pubPath, publicKeyB64 + "\n", { mode: 0o644 });
 
   const { createHash } = await import("node:crypto");
