@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { createHmac } from "node:crypto";
-import { createHeartbeatDaemon } from "./heartbeat.js";
+import { createHeartbeatDaemon, daemonShouldYield } from "./heartbeat.js";
 import type { SessionState } from "./session-state.js";
 
 function fakeState(over: Partial<SessionState> = {}): SessionState {
@@ -132,5 +132,33 @@ describe("createHeartbeatDaemon", () => {
     expect(r.ok).toBe(false);
     expect(r.run_id).toBeNull();
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+// ── daemonShouldYield — the convergence backstop predicate ───────────────────
+// CONSERVATIVE by design: yield ONLY to a DIFFERENT, LIVE owner. Wrongly yielding the
+// ONLY daemon is the exact failure this subsystem prevents, so every ambiguous case
+// (absent/empty/own/dead owner) MUST return false = keep beating.
+describe("daemonShouldYield", () => {
+  const yd = (ownerVal: number | null, alive: boolean, ownPid = 100, lockPath = "/x/lock") =>
+    daemonShouldYield(
+      { lockPath, ownPid },
+      { readLockPid: () => ownerVal, pidAlive: () => alive }
+    );
+
+  it("YIELDS only to a different, LIVE owner", () => {
+    expect(yd(200, true)).toBe(true); // different + live owner → yield
+  });
+
+  it("keeps beating on every ambiguous case", () => {
+    expect(yd(100, true)).toBe(false); // owner === my pid → no yield
+    expect(yd(200, false)).toBe(false); // different but DEAD owner (stale) → no yield
+    expect(yd(null, true)).toBe(false); // absent/empty/garbage lock → no yield
+    expect(
+      daemonShouldYield(
+        { lockPath: null, ownPid: 100 },
+        { readLockPid: () => 200, pidAlive: () => true }
+      )
+    ).toBe(false); // no lockPath configured → never yields
   });
 });

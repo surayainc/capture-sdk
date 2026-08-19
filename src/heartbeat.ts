@@ -38,6 +38,7 @@
  */
 
 import { createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readSessionState } from "./session-state.js";
 
 const DEFAULT_BRAIN_BASE_URL = "https://brain.suraya.ai";
@@ -75,6 +76,26 @@ export interface HeartbeatDaemonOptions {
   fetchImpl?: typeof fetch;
   readState?: typeof readSessionState;
   onError?: (err: Error, context: string) => void;
+  /**
+   * Heartbeat lock path (`<root>/.suraya/heartbeat.lock`). When set, enables the
+   * convergence backstop: a daemon that finds a DIFFERENT, LIVE pid in the lock
+   * self-terminates via `onLockLost`. Defense-in-depth for the spawn-side lock — it
+   * mops up the astronomically-rare crash-during-spawn duplicate. Absent ⇒ no backstop.
+   */
+  lockPath?: string | null;
+  /** This daemon's pid (default process.pid). The owner-is-me check compares against it. */
+  ownPid?: number;
+  /** Called once when a DIFFERENT live daemon owns the lock (self-terminate the process). */
+  onLockLost?: () => void;
+  /** Injectable {readLockPid,pidAlive} for the yield check (tests). */
+  yieldDeps?: YieldDeps;
+}
+
+/** Injectable dependencies for `daemonShouldYield` (tests). */
+export interface YieldDeps {
+  readLockPid?: (lockPath: string, deps?: YieldDeps) => number | null;
+  pidAlive?: (pid: number) => boolean;
+  readFileSync?: typeof readFileSync;
 }
 
 export interface HeartbeatDaemon {
@@ -91,6 +112,50 @@ export interface HeartbeatDaemon {
 /** Canonical body → HMAC hex (matches transport.ts + the brain heartbeat route). */
 function sign(body: string, secret: string): string {
   return createHmac("sha256", secret).update(body).digest("hex");
+}
+
+/** Is `pid` a live process? Signal 0 (no-op probe). EPERM = exists-but-not-ours. */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** Read the pid held in the heartbeat lock, or null when absent/unreadable/garbage. */
+export function readLockPid(lockPath: string, deps: YieldDeps = {}): number | null {
+  try {
+    const read = deps.readFileSync ?? readFileSync;
+    const n = Number.parseInt(String(read(lockPath, "utf8")).trim(), 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Convergence backstop (defense-in-depth for the spawn-side lock). Should THIS daemon
+ * YIELD — self-terminate — because another daemon now owns the lock?
+ *
+ * CONSERVATIVE BY DESIGN, because wrongly yielding the ONLY daemon is the exact failure
+ * this whole subsystem exists to prevent. Yield ONLY when the lock names a DIFFERENT,
+ * LIVE pid. Every other case keeps beating:
+ *   • lock absent / empty / garbage  → null owner → NO yield (I am still the signal)
+ *   • owner === my own pid           → I hold it  → NO yield
+ *   • owner is a DEAD pid            → stale      → NO yield (I outlived a crash)
+ * The spawn-side lock already resolves races to one daemon; this only mops up the
+ * astronomically-rare crash-during-spawn duplicate, converging it to exactly one.
+ */
+export function daemonShouldYield(
+  { lockPath, ownPid }: { lockPath: string | null; ownPid: number },
+  deps: YieldDeps = {}
+): boolean {
+  if (!lockPath) return false;
+  const owner = (deps.readLockPid ?? readLockPid)(lockPath, deps);
+  if (owner == null || owner === ownPid) return false;
+  return (deps.pidAlive ?? pidAlive)(owner) === true;
 }
 
 /**
@@ -111,6 +176,11 @@ export function createHeartbeatDaemon(
     ((err: Error, context: string) => {
       process.stderr.write(`[suraya-heartbeat] ${context}: ${err.message}\n`);
     });
+  // Convergence backstop config (defense-in-depth for the spawn-side lock).
+  const lockPath = opts.lockPath ?? null;
+  const ownPid = opts.ownPid ?? process.pid;
+  const onLockLost = opts.onLockLost ?? (() => {});
+  const yieldDeps = opts.yieldDeps ?? {};
 
   // In-memory state — seeded from spawn, refreshed opportunistically. NEVER cleared
   // by a failed disk read (that is the hook-death-survival contract).
@@ -120,6 +190,7 @@ export function createHeartbeatDaemon(
   let timer: NodeJS.Timeout | null = null;
   let running = false;
   let inFlight: Promise<unknown> | null = null;
+  let ticks = 0;
 
   /**
    * Opportunistically refresh runId/sessionId from the state file. On ANY failure
@@ -209,6 +280,26 @@ export function createHeartbeatDaemon(
 
   function tick() {
     if (!running) return;
+    ticks += 1;
+    // Convergence backstop: from the 2nd tick on, if a DIFFERENT live daemon owns the
+    // lock, self-terminate. We SKIP tick 1 because it fires immediately at start(),
+    // before the parent spawner has necessarily replaced the spawner-pid placeholder
+    // with our daemon pid — checking then could read the (alive) parent spawner pid and
+    // make the ONLY daemon wrongly yield. By tick 2 (one interval later) the parent has
+    // written our pid and usually exited, so a non-self owner is a genuine other daemon.
+    if (ticks > 1 && lockPath && daemonShouldYield({ lockPath, ownPid }, yieldDeps)) {
+      running = false;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      try {
+        onLockLost();
+      } catch {
+        /* best-effort — never throw out of a timer */
+      }
+      return;
+    }
     if (inFlight) return; // a prior beat still in flight — skip; it reschedules.
     inFlight = beatOnce()
       .catch((err) => onError(err as Error, "beatOnce"))
