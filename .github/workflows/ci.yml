@@ -76,11 +76,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
+      # Actions are SHA-pinned (not @v4 float tags) per this repo's post-Shai-Hulud
+      # supply-chain canon — a re-pointed float tag on the one repo that PUBLISHES to
+      # npm is exactly the attack this pins out. Same SHAs + `# v4` format as
+      # publish-npm.yml so the two workflows read identically; bump both together.
+      # (34e1148… = actions/checkout v4.3.1; 49933ea… = actions/setup-node v4.)
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           # Pinned to engines.node (">=22.14.0"); same version publish-npm.yml ships on.
           node-version: "22.14.0"
