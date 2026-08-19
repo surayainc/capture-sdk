@@ -68,13 +68,19 @@ describe("F6 capture-SDK credentials", () => {
       expect(result.publicKey).toMatch(/^[A-Za-z0-9+/=]+$/);
 
       const { execFileSync } = await import("node:child_process");
+      // Read the DACL back with pure .NET FileSecurity — NOT the Get-Acl cmdlet
+      // (the Microsoft.PowerShell.Security module fails to autoload on the
+      // windows-2025 runner image) and NOT the icacls we hardened with, so this
+      // stays an independent property check. GetAccessRules(...,[SecurityIdentifier])
+      // yields identities already as SIDs, so the check is locale-independent.
       const ps =
         "$ErrorActionPreference='Stop';" +
-        "$acl=Get-Acl -LiteralPath $env:KP;" +
+        "$p=$env:KP;" +
+        "$fs=[System.Security.AccessControl.FileSecurity]::new($p,[System.Security.AccessControl.AccessControlSections]::Access);" +
         "$me=([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value;" +
-        "$rules=@($acl.Access | Where-Object { $_.AccessControlType -eq 'Allow' } | " +
-        "ForEach-Object { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value });" +
-        "[PSCustomObject]@{ protected=$acl.AreAccessRulesProtected; me=$me; allow=@($rules) } | ConvertTo-Json -Compress";
+        "$allow=@($fs.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | " +
+        "Where-Object { $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Value });" +
+        "[PSCustomObject]@{ protected=$fs.AreAccessRulesProtected; me=$me; allow=@($allow) } | ConvertTo-Json -Compress";
       const out = execFileSync(
         "powershell.exe",
         ["-NoProfile", "-NonInteractive", "-Command", ps],
