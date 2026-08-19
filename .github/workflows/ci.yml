@@ -1,0 +1,103 @@
+# PR CI gate for @surayaorg/capture — the customer-facing distributable.
+#
+# WHY THIS EXISTS. capture-sdk is the one published, customer-facing package in the
+# org (npm `@surayaorg/capture`, public). It ALREADY runs security / static analysis on
+# every PR via CodeQL default setup — contexts `CodeQL`, `Analyze (actions)`,
+# `Analyze (javascript-typescript)` — which is configured WITHOUT a workflow file, so
+# enumerating `.github/workflows/` does not reveal it (verified via
+# `GET /code-scanning/default-setup` → state=configured). What it has NO gate for is
+# FUNCTIONAL correctness: no test, no typecheck, and no build runs on a pull request,
+# and nothing runs on Windows at all — so #9's win32 PowerShell / heartbeat-lock paths
+# would execute nowhere. This adds that missing functional gate on every PR and every
+# push to `main`, so the one package that ships to customers cannot land (and later be
+# published to npm) with a broken build or red tests. For comparison, surayainc/suraya
+# requires 5 checks and suraya-brain 6.
+#
+# GATES = the package's OWN scripts (package.json), nothing invented:
+#   typecheck  →  tsc --noEmit
+#   build      →  tsc            (validates the real emit path, incl. .d.ts generation)
+#   test       →  vitest run --passWithNoTests
+#                 (covers BOTH src/**/*.test.ts AND scripts/*.test.mjs — vitest globs
+#                  both; a single `npm test` is the whole test surface)
+# There is NO lint script or linter config in this repo (no eslint / prettier / biome
+# anywhere), so this workflow runs no linter. Do not add a lint step until a linter
+# actually exists — a fabricated gate is worse than an honest absence.
+#
+# CROSS-PLATFORM (ubuntu + windows), on purpose. The SDK ships cross-platform and its
+# heartbeat machinery does real filesystem locking (heartbeat-spawn.ts: the single-
+# daemon lock via `openSync(path, "wx")`) whose semantics differ on Windows, and
+# live-daemons.ts (incoming on #9) carries a win32 PowerShell branch. windows-latest
+# is the ONLY sensor for those paths. Mirrors the two-OS precedent in surayainc/suraya's
+# hooks-test.yml / scripts-test.yml.
+#
+#   fail-fast: false — one OS failing must NOT cancel or hide the other. A Windows red
+#   is a real finding to READ, not a reason to also lose the Linux result.
+#
+#   timeout-minutes — a Windows fs-lock path that HANGS would otherwise hold a runner
+#   until the 6h default cap (this exact class cost suraya's Windows leg 4h15m on
+#   2026-07-30). Bounding it turns a hang into a legible, fast failure.
+#
+# NO `paths:` filter on pull_request — deliberate, matching the model. If this check is
+# ever made REQUIRED on `main`, a paths filter would make GitHub leave the required
+# check PENDING FOREVER on any PR that does not match, silently blocking the merge with
+# no failing check to explain it (observed live on suraya PR #296). Always-run is cheap
+# on a low-volume repo and avoids that trap.
+#
+# MERGE GATE. `main` is governed by an active branch RULESET (id 16852650), NOT classic
+# branch protection (`GET /branches/main/protection` 404s — that endpoint cannot see
+# rulesets). That ruleset already requires a PR + 1 approving review and blocks
+# force-push / deletion, but it has NO `required_status_checks` rule — so today even a
+# PR with a red check can merge. This PR does NOT change the ruleset (the operator holds
+# that decision). The exact check-run contexts this workflow produces are:
+#     test (ubuntu-latest)   and   test (windows-latest)
+# Once they have a green history, add them (and, at the operator's discretion, the
+# stable `CodeQL` umbrella context) to that ruleset's required_status_checks — see the
+# PR body for the exact `gh api` fetch-modify-PUT against /rulesets/16852650.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege: the gates only read the tree. No packages, no deploys, no writes.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Pinned to engines.node (">=22.14.0"); same version publish-npm.yml ships on.
+          node-version: "22.14.0"
+
+      - name: Install dependencies
+        # --ignore-scripts: transitive-postinstall hardening, matching publish-npm.yml's
+        # supply-chain posture. This package has no install / postinstall / prepare
+        # script of its own, so nothing the gates need is skipped (build is run
+        # explicitly below). npm resolves per-platform optional deps (esbuild / rollup
+        # win32 binaries) from the v3 lockfile, so `npm ci` works on windows-latest.
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Build (tsc)
+        run: npm run build
+
+      - name: Test (vitest run)
+        run: npm test
