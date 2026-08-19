@@ -1,0 +1,13 @@
+# Force LF line endings in the working tree on every platform.
+#
+# GitHub-hosted windows-latest runners check out with core.autocrlf=true (CRLF).
+# scripts/node-text-linter.mjs begins with a `#!/usr/bin/env node` shebang, and a
+# shebang line + CRLF makes that .mjs fail to PARSE under vitest on Windows with
+# "SyntaxError: Invalid or unexpected token" — the whole file collects zero tests.
+# Reproduced deterministically: CRLF + shebang fails; CRLF without the shebang parses;
+# LF (either way) parses. The shebang is load-bearing (the file is a runnable CLI),
+# so the fix is to guarantee LF at checkout everywhere rather than drop the shebang.
+#
+# As a bonus this makes checkout bytes == committed bytes on every OS, so any future
+# line-ending-sensitive step (e.g. a `git diff --exit-code` codegen gate) stays honest.
+* text=auto eol=lf

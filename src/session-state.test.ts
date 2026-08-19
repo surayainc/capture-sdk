@@ -43,8 +43,13 @@ const FIXTURE: SessionState = {
 
 describe("sessionStatePath", () => {
   it("returns <root>/.suraya/session-state.json", () => {
+    // Build the expected path with the same platform-aware join() the
+    // production code uses, rather than a hardcoded POSIX string. On Windows
+    // join() yields backslash separators, so a literal "/foo/bar/..." assertion
+    // is a false failure — the production sessionStatePath (a plain path.join)
+    // is correct cross-platform; only this assertion was separator-bound.
     expect(sessionStatePath("/foo/bar")).toBe(
-      "/foo/bar/.suraya/session-state.json"
+      join("/foo/bar", ".suraya", "session-state.json")
     );
   });
 });
