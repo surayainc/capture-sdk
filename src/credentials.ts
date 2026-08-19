@@ -6,16 +6,24 @@
  * keypair, fetch pending sealed credentials, decrypt them locally, and
  * mark them claimed.
  *
- * Private keys live on disk at ~/.suraya/keys/<project_slug>.priv with
- * mode 0600. They never leave the consumer device.
+ * Private keys live on disk at ~/.suraya/keys/<project_slug>.priv,
+ * restricted to the current OS user only. On POSIX that is mode 0600 (and
+ * the keys dir 0700); on Windows those POSIX bits are no-ops (fs.stat reads
+ * them back as 0666), so we apply the real equivalent via an `icacls` ACL —
+ * inheritance removed, the current user granted Full control, everyone else
+ * (including Users / Authenticated Users) removed. If that ACL cannot be
+ * applied we WARN LOUDLY rather than silently leave the key at default
+ * profile permissions: a key believed-protected-but-not is worse than one
+ * known-exposed. The key never leaves the consumer device.
  *
  * Crypto: libsodium-wrappers (same officially-maintained library the
  * brain uses; round-trip wire-compatible).
  */
 import _sodium from "libsodium-wrappers";
+import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { promises as fs, constants as fsc } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 
 function keysDir(): string {
@@ -50,8 +58,139 @@ function pubKeyPath(projectSlug: string): string {
   return join(keysDir(), `${sanitizeSlug(projectSlug)}.pub`);
 }
 
+// ---------------------------------------------------------------------------
+// Owner-only permission hardening (cross-platform).
+//
+// POSIX: chmod 0600 (files) / 0700 (dir). Windows: those bits are no-ops, so
+// we call `icacls` to strip inheritance and grant the current user Full
+// control and nothing to anyone else. See the module header for the security
+// rationale.
+// ---------------------------------------------------------------------------
+
+/**
+ * Injectable exec seam, signature-compatible with `execFileSync`'s string
+ * overload (matches the convention in live-daemons.ts). Tests pass a stub so
+ * the Windows command construction / failure path is exercised on any host.
+ */
+export type HardenExec = (
+  file: string,
+  args: readonly string[],
+  options: { encoding: "utf8"; env?: NodeJS.ProcessEnv }
+) => string;
+
+export interface HardenResult {
+  /** true iff the ACL was applied; false means the loud warning fired. */
+  hardened: boolean;
+  /** The icacls principal used: a `*SID` (preferred) or a bare account name. */
+  principal: string;
+  /** Present iff hardening failed — the reason surfaced to the user. */
+  warning?: string;
+}
+
+/**
+ * Resolve the icacls principal for "the current user". Prefers the SID
+ * (`*S-1-5-21-…`) because SIDs are locale-invariant, unambiguous (no
+ * local-vs-domain name collision), and contain no spaces/quotes — obtained
+ * from `whoami /user`, which exists on every supported Windows. Falls back to
+ * the bare account name from os.userInfo() if the SID cannot be read; if THAT
+ * also cannot be resolved by icacls, the caller warns loudly.
+ */
+function currentUserPrincipalWin32(exec: HardenExec): string {
+  try {
+    // /fo csv /nh → `"MACHINE\user","S-1-5-21-…-1001"`; the only SID token is
+    // the user's. Passed as discrete argv elements (no shell).
+    const out = exec("whoami", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8" });
+    const m = out.match(/S-\d+(?:-\d+)+/);
+    if (m) return `*${m[0]}`;
+  } catch {
+    // fall through to the account-name fallback
+  }
+  return userInfo().username;
+}
+
+/** Prominent, unmissable, ASCII-only stderr banner (no box-drawing chars — a
+ *  non-UTF8 Windows codepage would garble them). */
+function hardeningWarning(path: string, detail: string, principal: string): string {
+  return (
+    "\n" +
+    "  =========================== SURAYA SECURITY WARNING ===========================\n" +
+    "  Could NOT restrict OS permissions on a Suraya private key file:\n" +
+    `    ${path}\n` +
+    `    reason: ${detail}\n` +
+    `    intended owner-only principal: ${principal}\n` +
+    "  This key decrypts cross-identity-wall sealed credentials and may be\n" +
+    "  READABLE BY OTHER USERS on this machine. Treat it as POTENTIALLY EXPOSED:\n" +
+    "  rotate it, and lock it down manually in an elevated prompt, e.g.:\n" +
+    `    icacls "${path}" /inheritance:r /grant:r "%USERNAME%":(F)\n` +
+    "  ===============================================================================\n" +
+    "\n"
+  );
+}
+
+/**
+ * Restrict a path to the current user only via `icacls`. INTERNAL — exported
+ * only so tests can exercise the command construction / failure path on any
+ * host (the exported name is not re-exported from index.ts, so it is not part
+ * of the public SDK surface).
+ *
+ * icacls invocation:  `icacls <path> /inheritance:r /grant:r <principal>:(F)`
+ *   • /inheritance:r  removes all inherited ACEs (the profile-default ACEs
+ *     that grant SYSTEM / Administrators / the user) — this is what makes the
+ *     DACL "protected". Without it, Windows keeps the loose inherited access.
+ *   • /grant:r        REPLACES (idempotent on re-run/rotate) the principal's
+ *     ACE rather than appending, so repeated calls converge to one ACE.
+ *   • <principal>:(F) grants that one principal Full control. Net DACL after
+ *     both: exactly one ACE = current user, Full — the 0600 equivalent.
+ *
+ * Never throws on icacls failure: it writes a loud warning and returns
+ * hardened:false, per the operator-approved fallback (a key
+ * believed-protected-but-not is worse than one known-exposed).
+ */
+export function restrictToCurrentUserWin32(
+  targetPath: string,
+  opts: { exec?: HardenExec; warn?: (msg: string) => void } = {}
+): HardenResult {
+  const exec = opts.exec ?? (execFileSync as unknown as HardenExec);
+  const warn = opts.warn ?? ((m: string) => void process.stderr.write(m));
+  const principal = currentUserPrincipalWin32(exec);
+  try {
+    // ARGUMENT-ARRAY exec — there is NO shell. `targetPath` and `principal`
+    // are discrete argv elements, so spaces / quotes / & | ; ` $ ( ) in either
+    // are inert data, not syntax. This is the deliberate anti-injection shape
+    // (mirrors live-daemons.ts); never build a shell string here.
+    exec("icacls", [targetPath, "/inheritance:r", "/grant:r", `${principal}:(F)`], {
+      encoding: "utf8",
+    });
+    return { hardened: true, principal };
+  } catch (e) {
+    const err = e as { code?: string; status?: number | null };
+    const detail = `icacls failed (code=${err.code ?? "?"} status=${err.status ?? "?"})`;
+    warn(hardeningWarning(targetPath, detail, principal));
+    return { hardened: false, principal, warning: detail };
+  }
+}
+
+/**
+ * Cross-platform "restrict to the current user". POSIX: chmod. Windows: icacls
+ * (never throws — warns loudly on failure). `exec` is a test seam threaded to
+ * the Windows path only.
+ */
+async function hardenToOwner(
+  targetPath: string,
+  opts: { dir?: boolean; exec?: HardenExec } = {}
+): Promise<void> {
+  if (process.platform === "win32") {
+    restrictToCurrentUserWin32(targetPath, { exec: opts.exec });
+    return;
+  }
+  await fs.chmod(targetPath, opts.dir ? 0o700 : 0o600);
+}
+
 async function ensureKeysDir(): Promise<void> {
   await fs.mkdir(keysDir(), { recursive: true, mode: 0o700 });
+  // mkdir's mode is subject to umask on POSIX and a no-op on Windows; an
+  // explicit harden makes the 0700-equivalent guarantee real on both.
+  await hardenToOwner(keysDir(), { dir: true });
 }
 
 export type KeypairGenResult = {
@@ -63,8 +202,9 @@ export type KeypairGenResult = {
 
 /**
  * Generate a new libsodium crypto_box keypair for the project. Writes
- * the private key to ~/.suraya/keys/<slug>.priv (mode 0600). Returns
- * the base64-encoded public key + paths + fingerprint.
+ * the private key to ~/.suraya/keys/<slug>.priv restricted to the current
+ * user only (POSIX 0600 / Windows icacls owner-only ACL). Returns the
+ * base64-encoded public key + paths + fingerprint.
  *
  * Refuses to overwrite an existing private key file — caller must
  * delete first if rotating intentionally (or pass force=true).
@@ -95,7 +235,10 @@ export async function generateKeypair(
   const privateKeyB64 = sodium.to_base64(kp.privateKey, sodium.base64_variants.ORIGINAL);
 
   await fs.writeFile(privPath, privateKeyB64 + "\n", { mode: 0o600 });
-  await fs.chmod(privPath, 0o600);
+  // Owner-only lockdown. POSIX: chmod 0600. Windows: icacls (the mode above is
+  // a no-op there). Runs AFTER the write; a truncate-rewrite preserves the ACL,
+  // so this holds across an intentional --force rotation too.
+  await hardenToOwner(privPath, { dir: false });
   await fs.writeFile(pubPath, publicKeyB64 + "\n", { mode: 0o644 });
 
   const { createHash } = await import("node:crypto");
