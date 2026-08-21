@@ -106,3 +106,25 @@ jobs:
 
       - name: Test (vitest run)
         run: npm test
+
+      # Gate A — signal-detect drift guard. src/signal-detect.ts is the CANONICAL
+      # fix-signal heuristic; surayainc/suraya-brain hand-mirrors it in
+      # src/lib/severity-derive.ts because the brain cannot import this package (the
+      # SDK is the brain's CLIENT — depending on it inverts the arrow and adds skew
+      # between a deployed brain and the SDK version its clients run). Both files
+      # carried a "keep in sync" comment and nothing enforced it, while that mirror
+      # wrote 108 of the 109 rows in the brain's prd fix_metrics table.
+      #
+      # This regenerates src/signal-detect.vectors.json from the built implementation
+      # and asserts the committed artifact is byte-identical. A behavioural change to
+      # detectFixSignal / suggestSeverity / PATTERNS turns this red until the fixture
+      # is regenerated — and regenerating changes its bytes, which is the signal that
+      # the brain must re-vendor. A comment or formatting change leaves the bytes
+      # untouched and stays quiet, which is why the fixture records BEHAVIOUR and
+      # carries no source hash.
+      #
+      # Runs on BOTH OSes with the rest of the matrix: the generator's main-guard uses
+      # pathToFileURL rather than `file://${process.argv[1]}` precisely so it does not
+      # silently no-op (and pass vacuously) on windows-latest.
+      - name: Gate A — golden vectors match the implementation
+        run: npm run gen:vectors:check
