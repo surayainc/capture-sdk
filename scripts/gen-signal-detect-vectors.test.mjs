@@ -16,6 +16,8 @@ import {
   buildVectors,
   findCoverageGaps,
   labelsFromSource,
+  patternsFromSource,
+  buildTieProbes,
   serialize,
   encodeInput,
   decodeInput,
@@ -139,5 +141,137 @@ describe("serialize", () => {
     expect(JSON.parse(JSON.stringify(encodeInput(undefined)))).toEqual({ __undefined__: true });
     expect(decodeInput(encodeInput(null))).toBe(null);
     expect(decodeInput(encodeInput("bug"))).toBe("bug");
+  });
+});
+
+describe("patternsFromSource — the structural fingerprint", () => {
+  it("extracts every PATTERNS entry in order, with regex/flags/signal/confidence/label", () => {
+    expect(patternsFromSource(FAKE_SRC)).toEqual([
+      { source: "\\balpha\\b", flags: "", signal: "bug", confidence: 0.9, label: "alpha" },
+      { source: "\\bbeta\\b", flags: "i", signal: "broken", confidence: 0.7, label: "beta" },
+    ]);
+  });
+
+  it("is empty for a source with no PATTERNS entries", () => {
+    expect(patternsFromSource("const x = 1;")).toEqual([]);
+  });
+
+  it("moves when two entries are transposed — order is part of the signature", () => {
+    const swapped = `
+      { pattern: /\\bbeta\\b/i, signal: "broken", confidence: 0.7, label: "beta" },
+      { pattern: /\\balpha\\b/, signal: "bug", confidence: 0.9, label: "alpha" },
+    `;
+    expect(patternsFromSource(swapped)).not.toEqual(patternsFromSource(FAKE_SRC));
+    expect(patternsFromSource(swapped).map((p) => p.label)).toEqual(["beta", "alpha"]);
+  });
+});
+
+describe("findCoverageGaps — the NEW-PATTERN-under-an-existing-LABEL survivor", () => {
+  // Two patterns share the label "issue" but differ in confidence — exactly the
+  // /\bflaky\b/i @0.9 "issue" case. A label-keyed check would call "issue" covered by
+  // the 0.4 probe and let the 0.9 behaviour ship unexercised. Per-pattern coverage
+  // (keyed on regex + signal + confidence) must demand a probe the 0.9 pattern wins on.
+  const DUP_LABEL_SRC = `
+    { pattern: /\\bflaky\\b/i, signal: "problem", confidence: 0.9, label: "issue" },
+    { pattern: /\\bissue\\b/i, signal: "problem", confidence: 0.4, label: "issue" },
+  `;
+  const severityAllTiers = [
+    { detection: {}, affected_production: false, expect: "low" },
+    { detection: {}, affected_production: false, expect: "medium" },
+    { detection: {}, affected_production: false, expect: "high" },
+    { detection: {}, affected_production: false, expect: "critical" },
+  ];
+
+  it("RED: covering only the 0.4 'issue' probe leaves the 0.9 'flaky' pattern a gap", () => {
+    const onlyLowIssue = [
+      { text: "there is an issue with the cache", expect: { detected: true, signal: "problem", confidence: 0.4, matched_pattern: "issue" } },
+      { text: "", expect: { detected: false, signal: "unclear", confidence: 0 } },
+    ];
+    const gaps = findCoverageGaps(DUP_LABEL_SRC, onlyLowIssue, severityAllTiers);
+    expect(gaps.length).toBeGreaterThan(0);
+    // The gap must name the UNCOVERED high-confidence pattern, not the label alone.
+    expect(gaps.join(" ")).toContain("flaky");
+    expect(gaps.join(" ")).toContain("0.9");
+  });
+
+  it("GREEN: adding a probe the 0.9 'flaky' pattern wins on closes the gap", () => {
+    const covered = [
+      { text: "the test is flaky", expect: { detected: true, signal: "problem", confidence: 0.9, matched_pattern: "issue" } },
+      { text: "there is an issue with the cache", expect: { detected: true, signal: "problem", confidence: 0.4, matched_pattern: "issue" } },
+      { text: "", expect: { detected: false, signal: "unclear", confidence: 0 } },
+    ];
+    expect(findCoverageGaps(DUP_LABEL_SRC, covered, severityAllTiers)).toEqual([]);
+  });
+});
+
+describe("findCoverageGaps — tie-probe integrity", () => {
+  const validSrc = FAKE_SRC;
+  const coveringDetect = [
+    { text: "alpha", expect: { detected: true, signal: "bug", confidence: 0.9, matched_pattern: "alpha" } },
+    { text: "beta", expect: { detected: true, signal: "broken", confidence: 0.7, matched_pattern: "beta" } },
+    { text: "", expect: { detected: false, signal: "unclear", confidence: 0 } },
+  ];
+  const severityAllTiers = [
+    { detection: {}, affected_production: false, expect: "low" },
+    { detection: {}, affected_production: false, expect: "medium" },
+    { detection: {}, affected_production: false, expect: "high" },
+    { detection: {}, affected_production: false, expect: "critical" },
+  ];
+
+  it("RED: a tie-probe that resolved ABOVE its group confidence is a gap", () => {
+    // Simulates a newline-join that accidentally matched a higher pattern: the probe
+    // can no longer observe intra-group order, so the generator must refuse.
+    const badTie = [{ confidence: 0.8, tieInput: "…", expect: { detected: true, signal: "error", confidence: 0.95 } }];
+    const gaps = findCoverageGaps(validSrc, coveringDetect, severityAllTiers, badTie);
+    expect(gaps.join(" ")).toContain("tie-probe for confidence group 0.8");
+  });
+
+  it("GREEN: a tie-probe resolving AT its group confidence is accepted", () => {
+    const goodTie = [{ confidence: 0.8, tieInput: "…", expect: { detected: true, signal: "broken", confidence: 0.8 } }];
+    expect(findCoverageGaps(validSrc, coveringDetect, severityAllTiers, goodTie)).toEqual([]);
+  });
+});
+
+describe("buildTieProbes — one synthetic probe per equal-confidence group", () => {
+  // A stand-in impl that puts two REAL probe strings in the same 0.8 group. The winner
+  // of the joined tie-input is decided by which the impl matches FIRST — so flipping the
+  // impl's match order flips the tie-probe's expected output. That flip is the whole
+  // guard: reorder the group and the vector — and the artifact — move.
+  const makeImpl = (regressionFirst) => ({
+    detectFixSignal(text) {
+      if (typeof text !== "string" || !text) return { detected: false, signal: "unclear", confidence: 0 };
+      const hasAssert = /assertion failed/.test(text);
+      const hasReg = /regression/.test(text);
+      const assertDet = { detected: true, signal: "broken", confidence: 0.8, matched_pattern: "assertion failed" };
+      const regDet = { detected: true, signal: "regression", confidence: 0.8, matched_pattern: "regression" };
+      if (regressionFirst) {
+        if (hasReg) return regDet;
+        if (hasAssert) return assertDet;
+      } else {
+        if (hasAssert) return assertDet;
+        if (hasReg) return regDet;
+      }
+      return { detected: false, signal: "unclear", confidence: 0 };
+    },
+  });
+
+  it("emits exactly one tie-probe for the single 0.8 group, joining its members", () => {
+    const probes = buildTieProbes(makeImpl(false));
+    expect(probes).toHaveLength(1);
+    expect(probes[0].confidence).toBe(0.8);
+    expect(probes[0].tieInput).toContain("assertion failed");
+    expect(probes[0].tieInput).toContain("regression");
+  });
+
+  it("the tie-probe's winner FLIPS when the group is reordered — the reorder catch", () => {
+    const canonical = buildTieProbes(makeImpl(false))[0];
+    const reordered = buildTieProbes(makeImpl(true))[0];
+    expect(canonical.expect.matched_pattern).toBe("assertion failed");
+    expect(canonical.expect.signal).toBe("broken");
+    expect(reordered.expect.matched_pattern).toBe("regression");
+    expect(reordered.expect.signal).toBe("regression");
+    // Because the expected output differs, the serialised vector — and thus the
+    // artifact bytes and the mirror replay — differ. That is the guard.
+    expect(JSON.stringify(canonical.expect)).not.toBe(JSON.stringify(reordered.expect));
   });
 });

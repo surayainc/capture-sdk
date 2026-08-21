@@ -16,9 +16,17 @@
 # GATES = the package's OWN scripts (package.json), nothing invented:
 #   typecheck  →  tsc --noEmit
 #   build      →  tsc            (validates the real emit path, incl. .d.ts generation)
-#   test       →  vitest run --passWithNoTests
-#                 (covers BOTH src/**/*.test.ts AND scripts/*.test.mjs — vitest globs
-#                  both; a single `npm test` is the whole test surface)
+#   test       →  vitest run     (covers BOTH src/**/*.test.ts AND scripts/*.test.mjs —
+#                 vitest globs both; a single `npm test` is the whole test surface)
+#                 NOTE: `--passWithNoTests` was REMOVED. With it, a discovery collapse
+#                 (a glob/config break, or `npm test` run from the wrong cwd) finds zero
+#                 test files and EXITS 0 — the signal-detect vector replay AND the
+#                 generator's coverage/refusal tests would silently vanish while CI
+#                 stayed green. Gate A (`gen:vectors:check`, its own step below) survives
+#                 that because it is not a vitest file; the vitest suite does not, so it
+#                 must fail loudly on zero discovery. vitest's default (fail on no tests)
+#                 is exactly that. This repo always has tests, so the flag only ever
+#                 masked the collapse.
 # There is NO lint script or linter config in this repo (no eslint / prettier / biome
 # anywhere), so this workflow runs no linter. Do not add a lint step until a linter
 # actually exists — a fabricated gate is worse than an honest absence.
