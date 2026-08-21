@@ -40,9 +40,11 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "gen:vectors": "npm run build && node scripts/gen-signal-detect-vectors.mjs",
+    "gen:vectors:check": "npm run build && node scripts/gen-signal-detect-vectors.mjs --check"
   },
   "devDependencies": {
     "@types/node": "^22.19.18",
