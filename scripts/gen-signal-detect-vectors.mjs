@@ -278,8 +278,14 @@ export function buildTieProbes({ detectFixSignal }) {
  * discipline as the vectors.
  */
 export function patternsFromSource(implSrc) {
+  // The regex-literal body is captured with `[^/\n]+` — a single negated class, LINEAR
+  // (no ambiguous alternation / nested quantifier that would backtrack, i.e. no ReDoS).
+  // It relies on the invariant that no PATTERNS regex literal contains an unescaped `/`
+  // inside it (true for the whole table; a `/` would have to be written `\/`). Do NOT
+  // "generalise" this to an alternation over escapes + char-classes — that is exactly the
+  // catastrophic-backtracking shape CodeQL js/redos flags, and it buys nothing here.
   const re =
-    /\{\s*pattern:\s*\/((?:\\.|\[[^\]]*\]|[^/\\])+)\/([a-z]*)\s*,\s*signal:\s*"([^"]+)"\s*,\s*confidence:\s*([0-9.]+)\s*,\s*label:\s*"([^"]+)"\s*\}/g;
+    /\{\s*pattern:\s*\/([^/\n]+)\/([a-z]*)\s*,\s*signal:\s*"([^"]+)"\s*,\s*confidence:\s*([0-9.]+)\s*,\s*label:\s*"([^"]+)"\s*\}/g;
   const out = [];
   let m;
   while ((m = re.exec(implSrc)) !== null) {

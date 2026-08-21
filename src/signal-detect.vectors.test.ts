@@ -56,8 +56,11 @@ function decode(v: unknown): unknown {
  * required Test job.
  */
 function parsePatternSignature(implSrc: string): PatternSig[] {
+  // `[^/\n]+` is a LINEAR capture of the regex-literal body (no backtracking ReDoS); it
+  // relies on no PATTERNS literal containing an unescaped `/`. Mirror of the note in the
+  // generator's patternsFromSource — keep both linear.
   const re =
-    /\{\s*pattern:\s*\/((?:\\.|\[[^\]]*\]|[^/\\])+)\/([a-z]*)\s*,\s*signal:\s*"([^"]+)"\s*,\s*confidence:\s*([0-9.]+)\s*,\s*label:\s*"([^"]+)"\s*\}/g;
+    /\{\s*pattern:\s*\/([^/\n]+)\/([a-z]*)\s*,\s*signal:\s*"([^"]+)"\s*,\s*confidence:\s*([0-9.]+)\s*,\s*label:\s*"([^"]+)"\s*\}/g;
   const out: PatternSig[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(implSrc)) !== null) {
